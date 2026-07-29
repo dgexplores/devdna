@@ -12,6 +12,7 @@ dependencies = [
   "alembic>=1.16,<2",
   "asyncpg>=0.30,<1",
   "fastapi>=0.116,<1",
+  "httpx2>=2.7,<3",
   "pydantic-settings>=2.10,<3",
   "redis>=6.2,<7",
   "rq>=2.4,<3",
@@ -21,7 +22,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "httpx2>=2.7,<3",
+  "aiosqlite>=0.21,<1",
   "mypy>=1.17,<2",
   "pytest>=8.4,<9",
   "ruff>=0.12,<1",

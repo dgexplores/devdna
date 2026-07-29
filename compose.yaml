@@ -24,7 +24,11 @@ services:
   worker:
     build: .
     command: rq worker devdna --url redis://redis:6379/0
+    environment:
+      DEVDNA_DATABASE_URL: postgresql+asyncpg://devdna:devdna@postgres:5432/devdna
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
 

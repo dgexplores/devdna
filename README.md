@@ -52,3 +52,17 @@ With Docker installed, start the complete stack:
 ```bash
 docker compose up --build
 ```
+
+Submit a public GitHub profile analysis:
+
+```bash
+curl -X POST http://localhost:8000/v1/analyses \
+  -H "Content-Type: application/json" \
+  -d '{"github_username":"octocat","target_role":"python_backend_developer"}'
+```
+
+Use the returned `id` to retrieve its status and snapshot:
+
+```bash
+curl http://localhost:8000/v1/analyses/ANALYSIS_ID
+```

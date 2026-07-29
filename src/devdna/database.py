@@ -1,4 +1,8 @@
+from collections.abc import AsyncIterator
+
+from fastapi import Request
 from sqlalchemy import MetaData
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 
 NAMING_CONVENTION = {
@@ -12,3 +16,8 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
+    async with request.app.state.sessions() as session:
+        yield session

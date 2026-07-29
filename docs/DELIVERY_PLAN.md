@@ -18,6 +18,8 @@ Every increment follows: define acceptance criteria → implement smallest verti
 
 ## Milestone 1 — reliable GitHub collection
 
+**Status:** first vertical slice completed on 30 July 2026. A validated request is persisted, queued, processed by the worker, fetched from GitHub, and returned with rate-limit metadata. Repository pagination, ETag caching, duplicate suppression, and retry scheduling remain in this milestone.
+
 - `POST /v1/analyses` and `GET /v1/analyses/{id}`.
 - Background job state machine: queued, running, completed, partial, failed.
 - Typed GitHub client, pagination, retries, ETag cache, rate-limit handling.

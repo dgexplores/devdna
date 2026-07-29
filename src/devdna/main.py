@@ -5,10 +5,13 @@ from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
+from redis import Redis as SyncRedis
 from redis.asyncio import Redis
+from rq import Queue
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from devdna.analyses import router as analyses_router
 from devdna.config import Settings, get_settings
 from devdna.logging import configure_logging
 
@@ -44,12 +47,17 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.database = create_async_engine(settings.database_url, pool_pre_ping=True)
+        app.state.sessions = async_sessionmaker(app.state.database, expire_on_commit=False)
         app.state.redis = Redis.from_url(settings.redis_url)
+        app.state.queue_redis = SyncRedis.from_url(settings.redis_url)
+        app.state.queue = Queue("devdna", connection=app.state.queue_redis)
         yield
+        app.state.queue_redis.close()
         await app.state.redis.aclose()
         await app.state.database.dispose()
 
     app = FastAPI(title="DevDNA API", version="0.1.0", lifespan=lifespan)
+    app.include_router(analyses_router)
 
     @app.get("/health/live", tags=["health"])
     async def liveness() -> dict[str, str]:
