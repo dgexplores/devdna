@@ -1,0 +1,49 @@
+services:
+  api:
+    build: .
+    environment:
+      DEVDNA_DATABASE_URL: postgresql+asyncpg://devdna:devdna@postgres:5432/devdna
+      DEVDNA_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: rq worker devdna --url redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: devdna
+      POSTGRES_USER: devdna
+      POSTGRES_PASSWORD: devdna
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devdna"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:
