@@ -2,7 +2,7 @@ import re
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 AnalysisStatus = Literal["queued", "running", "completed", "failed"]
@@ -50,7 +50,29 @@ class GitHubProfile(BaseModel):
     updated_at: datetime
 
 
+class GitHubRepository(BaseModel):
+    id: int
+    name: str
+    full_name: str
+    html_url: str
+    description: str | None = None
+    fork: bool
+    archived: bool
+    disabled: bool
+    language: str | None = None
+    topics: list[str] = Field(default_factory=list)
+    size: int
+    stargazers_count: int
+    forks_count: int
+    open_issues_count: int
+    default_branch: str
+    created_at: datetime
+    updated_at: datetime
+    pushed_at: datetime | None = None
+
+
 class GitHubSnapshot(BaseModel):
     profile: GitHubProfile
+    repositories: list[GitHubRepository] = Field(default_factory=list)
     rate_limit_remaining: int | None
     rate_limit_reset: int | None

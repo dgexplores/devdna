@@ -10,13 +10,13 @@ from devdna.models import AnalysisRun
 from devdna.schemas import GitHubSnapshot
 
 logger = logging.getLogger(__name__)
-ProfileFetcher = Callable[[str], Awaitable[GitHubSnapshot]]
+SnapshotFetcher = Callable[[str], Awaitable[GitHubSnapshot]]
 
 
 async def collect_profile(
     analysis_id: str,
     sessions: async_sessionmaker[AsyncSession],
-    fetch_profile: ProfileFetcher,
+    fetch_snapshot: SnapshotFetcher,
 ) -> None:
     async with sessions() as session:
         analysis = await session.get(AnalysisRun, analysis_id)
@@ -29,7 +29,7 @@ async def collect_profile(
         await session.commit()
 
         try:
-            snapshot = await fetch_profile(analysis.github_username)
+            snapshot = await fetch_snapshot(analysis.github_username)
         except GitHubUserNotFound:
             analysis.status = "failed"
             analysis.error_message = "GitHub user not found"
@@ -55,7 +55,7 @@ async def run_profile_collection(analysis_id: str, settings: Settings) -> None:
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     client = GitHubClient(settings)
     try:
-        await collect_profile(analysis_id, sessions, client.get_profile)
+        await collect_profile(analysis_id, sessions, client.get_snapshot)
     finally:
         await engine.dispose()
 

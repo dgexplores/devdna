@@ -61,7 +61,7 @@ curl -X POST http://localhost:8000/v1/analyses \
   -d '{"github_username":"octocat","target_role":"python_backend_developer"}'
 ```
 
-Use the returned `id` to retrieve its status and snapshot:
+Use the returned `id` to retrieve its status and snapshot. A completed snapshot includes the public profile and up to 10 recently pushed, non-fork, non-archived owner repositories:
 
 ```bash
 curl http://localhost:8000/v1/analyses/ANALYSIS_ID
