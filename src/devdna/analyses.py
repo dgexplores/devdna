@@ -12,6 +12,7 @@ from devdna.database import get_session
 from devdna.jobs import collect_profile_job
 from devdna.models import AnalysisRun
 from devdna.schemas import AnalysisCreate, AnalysisResponse, ReportSnapshot
+from devdna.security import authorize_analysis_creation
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/analyses", tags=["analyses"])
@@ -41,7 +42,12 @@ async def find_active_analysis(
     )
 
 
-@router.post("", response_model=AnalysisResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(authorize_analysis_creation)],
+)
 async def create_analysis(
     payload: AnalysisCreate,
     session: SessionDependency,

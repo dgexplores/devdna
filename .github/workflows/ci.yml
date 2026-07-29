@@ -21,3 +21,31 @@ jobs:
       - run: uv run ruff check .
       - run: uv run mypy
       - run: uv run pytest
+      - run: bash -n scripts/backup_database.sh scripts/restore_database.sh
+      - run: docker build --tag devdna:ci .
+
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: devdna
+          POSTGRES_USER: devdna
+          POSTGRES_PASSWORD: devdna
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U devdna"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DEVDNA_ENVIRONMENT: test
+      DEVDNA_DATABASE_URL: postgresql+asyncpg://devdna:devdna@localhost:5432/devdna
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --dev
+      - run: uv run alembic upgrade head
+      - run: uv run alembic check

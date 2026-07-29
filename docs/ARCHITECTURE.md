@@ -13,7 +13,7 @@ Keep this as one deployable Python codebase with two processes: API and worker. 
 
 | Component | Responsibility |
 |---|---|
-| FastAPI API | Auth later; request validation; create/read analyses; rate limiting; status endpoints. |
+| FastAPI API | Bearer API-key authentication for writes; request validation; create/read analyses; per-client rate limiting; health and metrics endpoints. |
 | Worker | Collect GitHub data, select repositories, run evidence rules, create report artifacts. |
 | PostgreSQL | Users, immutable analysis runs, repository snapshots, evidence, role rubrics, recommendations. |
 | Redis | Queue, short-lived rate-limit counters, distributed locks, cache. |
@@ -22,12 +22,13 @@ Keep this as one deployable Python codebase with two processes: API and worker. 
 ## Analysis lifecycle
 
 1. Validate `github_username` and `target_role`.
-2. Return an existing fresh completed analysis if its cache key matches.
-3. Otherwise create an `analysis_run` and enqueue one idempotent job.
-4. Worker fetches user and repositories, then selects meaningful non-fork, non-archived projects.
-5. Worker records raw snapshot facts and derives evidence with deterministic rules.
-6. Worker maps evidence to the role rubric and persists a versioned report.
-7. Optional LLM summary uses only the persisted evidence JSON schema.
+2. Authenticate the caller in production and atomically apply its Redis request limit.
+3. Return an existing active analysis when the username and role already have queued work.
+4. Otherwise create an `analysis_run` and enqueue one idempotent job.
+5. Worker fetches user and repositories, then selects meaningful non-fork, non-archived projects.
+6. Worker records raw snapshot facts and derives evidence with deterministic rules.
+7. Worker maps evidence to the role rubric and persists a versioned report.
+8. Optional LLM summary uses only the persisted evidence JSON schema.
 
 ## Core data entities
 
@@ -51,6 +52,14 @@ The current release stores the immutable public GitHub collection in `profile_sn
 - Use a Redis lock keyed by analysis cache key so duplicate requests create one job.
 - Limit `POST /v1/analyses` with an atomic Redis fixed-window counter. The current direct-peer IP key is safe for direct deployment; configure trusted proxy addresses before accepting forwarded client IPs.
 - Fail analysis creation closed when Redis cannot enforce the limit. Return the limit, remaining count, and retry interval in standard response headers.
+
+## Operations and observability
+
+- Structured request and exception logs include a validated request ID, route template, response status, duration, and authenticated client identifier.
+- `/metrics` exposes process-local Prometheus counters and duration summaries with bounded route labels. The deployment restricts this endpoint to its monitoring network.
+- Terminal analysis records expire after 90 days by default through an externally scheduled, bounded maintenance command. Active work is excluded.
+- PostgreSQL custom-format backups are verified when created; restore stops writers, reapplies migrations, and restarts services.
+- CI checks the migration head against PostgreSQL, builds the runtime image, and runs the complete static and automated test gate.
 
 ## Security and privacy baseline
 

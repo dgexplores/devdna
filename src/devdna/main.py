@@ -1,35 +1,32 @@
 import logging
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from redis import Redis as SyncRedis
 from redis.asyncio import Redis
 from rq import Queue
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from starlette.middleware.base import RequestResponseEndpoint
+from starlette.responses import Response
 
 from devdna.analyses import router as analyses_router
 from devdna.config import Settings, get_settings
 from devdna.logging import configure_logging
+from devdna.observability import RequestMetrics, request_id
+from devdna.security import parse_api_keys
 from devdna.web import asset_directory
 from devdna.web import router as web_router
 
 ReadinessCheck = Callable[[], Awaitable[dict[str, str]]]
 logger = logging.getLogger(__name__)
-RATE_LIMIT_SCRIPT = """
-local current = redis.call("INCR", KEYS[1])
-if current == 1 then
-    redis.call("EXPIRE", KEYS[1], ARGV[1])
-end
-return {current, redis.call("TTL", KEYS[1])}
-"""
 
 
-def add_security_headers(response: Any, path: str) -> None:
+def add_security_headers(response: Response, path: str) -> None:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -65,6 +62,9 @@ def create_app(
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
+    api_credentials = parse_api_keys(settings.api_keys)
+    if settings.environment in {"staging", "production"} and not api_credentials:
+        raise ValueError("DEVDNA_API_KEYS is required for the API in staging and production")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -80,9 +80,15 @@ def create_app(
         await app.state.database.dispose()
 
     app = FastAPI(title="DevDNA API", version="0.1.0", lifespan=lifespan)
+    app.state.metrics = RequestMetrics()
+    app.state.settings = settings
+    app.state.api_credentials = api_credentials
 
     @app.middleware("http")
-    async def harden_requests(request: Request, call_next: Callable[..., Awaitable[Any]]) -> Any:
+    async def harden_requests(
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
         content_length = request.headers.get("content-length")
         if request.method in {"POST", "PUT", "PATCH"} and content_length is None:
             response = JSONResponse(
@@ -117,44 +123,59 @@ def create_app(
                 add_security_headers(response, request.url.path)
                 return response
 
-        rate_headers: dict[str, str] = {}
-        if request.method == "POST" and request.url.path == "/v1/analyses":
-            # ponytail: use the direct peer until deployment has a trusted-proxy allowlist.
-            client_host = request.client.host if request.client else "unknown"
-            key = f"devdna:rate:analysis:{client_host}"
-            try:
-                result = await request.app.state.rate_limiter.eval(
-                    RATE_LIMIT_SCRIPT,
-                    1,
-                    key,
-                    settings.analysis_rate_window_seconds,
-                )
-                current, ttl = int(result[0]), max(1, int(result[1]))
-            except Exception:
-                logger.exception("Analysis rate limiter failed")
-                response = JSONResponse(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    content={"detail": "Rate limiter unavailable"},
-                )
-                add_security_headers(response, request.url.path)
-                return response
+        downstream_response = await call_next(request)
+        add_security_headers(downstream_response, request.url.path)
+        return downstream_response
 
-            rate_headers = {
-                "X-RateLimit-Limit": str(settings.analysis_rate_limit),
-                "X-RateLimit-Remaining": str(max(0, settings.analysis_rate_limit - current)),
-            }
-            if current > settings.analysis_rate_limit:
-                response = JSONResponse(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    content={"detail": "Analysis request limit exceeded"},
-                    headers={**rate_headers, "Retry-After": str(ttl)},
-                )
-                add_security_headers(response, request.url.path)
-                return response
+    @app.middleware("http")
+    async def observe_requests(
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        current_request_id = request_id(request.headers.get("x-request-id"))
+        request.state.request_id = current_request_id
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration = time.perf_counter() - started
+            route = getattr(request.scope.get("route"), "path", "unmatched")
+            app.state.metrics.observe(request.method, route, 500, duration)
+            logger.exception(
+                "Unhandled request error",
+                extra={
+                    "request_id": current_request_id,
+                    "method": request.method,
+                    "route": route,
+                    "status_code": 500,
+                    "duration_ms": round(duration * 1000, 3),
+                    "client_id": getattr(request.state, "api_client_id", None),
+                },
+            )
+            response = JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"detail": "Internal server error", "request_id": current_request_id},
+            )
+            response.headers["X-Request-ID"] = current_request_id
+            add_security_headers(response, request.url.path)
+            return response
 
-        response = await call_next(request)
-        response.headers.update(rate_headers)
-        add_security_headers(response, request.url.path)
+        duration = time.perf_counter() - started
+        route = getattr(request.scope.get("route"), "path", "unmatched")
+        app.state.metrics.observe(request.method, route, response.status_code, duration)
+        response.headers["X-Request-ID"] = current_request_id
+        request_logger = logger.debug if route == "/health/live" else logger.info
+        request_logger(
+            "HTTP request completed",
+            extra={
+                "request_id": current_request_id,
+                "method": request.method,
+                "route": route,
+                "status_code": response.status_code,
+                "duration_ms": round(duration * 1000, 3),
+                "client_id": getattr(request.state, "api_client_id", None),
+            },
+        )
         return response
 
     app.include_router(analyses_router)
@@ -169,7 +190,7 @@ def create_app(
         return {"status": "ok"}
 
     @app.get("/health/ready", tags=["health"])
-    async def readiness(request: Request) -> Any:
+    async def readiness(request: Request) -> JSONResponse:
         checks = await (readiness_check or (lambda: check_dependencies(request.app)))()
         required = {"database", "redis"}
         ready = required.issubset(checks) and all(value == "up" for value in checks.values())
@@ -177,6 +198,13 @@ def create_app(
         return JSONResponse(
             status_code=code,
             content={"status": "ready" if ready else "not_ready", "checks": checks},
+        )
+
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics(request: Request) -> PlainTextResponse:
+        return PlainTextResponse(
+            request.app.state.metrics.render(),
+            media_type="text/plain; version=0.0.4",
         )
 
     return app

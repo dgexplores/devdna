@@ -6,14 +6,14 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from devdna.config import get_settings
-from devdna.database import Base
+from devdna.models import AnalysisRun
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
-target_metadata = Base.metadata
+target_metadata = AnalysisRun.metadata
 
 
 def run_migrations_offline() -> None:

@@ -54,3 +54,37 @@ def test_readiness_fails_when_dependency_is_down() -> None:
 def test_readiness_fails_when_checks_are_missing() -> None:
     with client({}) as test_client:
         assert test_client.get("/health/ready").status_code == 503
+
+
+def test_request_id_and_metrics_are_exposed() -> None:
+    with client({}) as test_client:
+        response = test_client.get("/health/live", headers={"X-Request-ID": "trace-123"})
+        metrics = test_client.get("/metrics")
+
+    assert response.headers["X-Request-ID"] == "trace-123"
+    assert metrics.status_code == 200
+    assert 'route="/health/live",status="200"} 1' in metrics.text
+
+
+def test_unhandled_errors_return_traceable_response_and_metric() -> None:
+    async def readiness() -> dict[str, str]:
+        return {}
+
+    app = create_app(readiness_check=readiness)
+    app.router.lifespan_context = no_services
+
+    @app.get("/test-error")
+    async def fail() -> None:
+        raise RuntimeError("unexpected")
+
+    with TestClient(app) as test_client:
+        response = test_client.get("/test-error", headers={"X-Request-ID": "error-trace"})
+        metrics = test_client.get("/metrics")
+
+    assert response.status_code == 500
+    assert response.headers["X-Request-ID"] == "error-trace"
+    assert response.json() == {
+        "detail": "Internal server error",
+        "request_id": "error-trace",
+    }
+    assert 'route="/test-error",status="500"} 1' in metrics.text

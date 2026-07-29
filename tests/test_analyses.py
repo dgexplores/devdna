@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from devdna.config import Settings
@@ -43,6 +44,7 @@ def create_test_client(
     rate_limit: int = 10,
     max_request_bytes: int = 16_384,
     rate_limiter: FakeRateLimiter | None = None,
+    api_keys: str | None = None,
 ) -> TestClient:
     database_url = f"sqlite+aiosqlite:///{database_path}"
 
@@ -59,6 +61,7 @@ def create_test_client(
             database_url=database_url,
             analysis_rate_limit=rate_limit,
             max_request_bytes=max_request_bytes,
+            api_keys=SecretStr(api_keys) if api_keys else None,
         )
     )
     client = TestClient(app)
@@ -181,6 +184,49 @@ def test_rate_limits_analysis_creation(tmp_path: Path) -> None:
     assert blocked.status_code == 429
     assert blocked.headers["X-RateLimit-Limit"] == "1"
     assert int(blocked.headers["Retry-After"]) > 0
+
+
+def test_requires_configured_api_key_and_rate_limits_each_client(tmp_path: Path) -> None:
+    client = create_test_client(
+        tmp_path / "authenticated-rate-limit.db",
+        FakeQueue(),
+        rate_limit=1,
+        api_keys=("developer=correct-horse-battery-staple,recruiter=another-long-secret-value"),
+    )
+    payload = {
+        "github_username": "octocat",
+        "target_role": "python_backend_developer",
+    }
+    try:
+        missing = client.post("/v1/analyses", json=payload)
+        developer = client.post(
+            "/v1/analyses",
+            json=payload,
+            headers={
+                "Authorization": "Bearer developer.correct-horse-battery-staple",
+            },
+        )
+        developer_blocked = client.post(
+            "/v1/analyses",
+            json=payload,
+            headers={
+                "Authorization": "Bearer developer.correct-horse-battery-staple",
+            },
+        )
+        recruiter = client.post(
+            "/v1/analyses",
+            json=payload,
+            headers={"Authorization": "Bearer recruiter.another-long-secret-value"},
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert missing.status_code == 401
+    assert missing.headers["WWW-Authenticate"] == "Bearer"
+    assert missing.headers["X-RateLimit-Remaining"] == "0"
+    assert developer.status_code == 202
+    assert developer_blocked.status_code == 429
+    assert recruiter.status_code == 202
 
 
 def test_fails_closed_when_rate_limiter_is_unavailable(tmp_path: Path) -> None:

@@ -20,7 +20,7 @@ tests/          API and service tests
 compose.yaml    local API, worker, PostgreSQL, and Redis stack
 ```
 
-Read [the product specification](docs/PRODUCT_SPEC.md), [architecture](docs/ARCHITECTURE.md), and [delivery plan](docs/DELIVERY_PLAN.md) before implementation.
+Read [the product specification](docs/PRODUCT_SPEC.md), [architecture](docs/ARCHITECTURE.md), [security baseline](docs/SECURITY.md), [operations runbook](docs/OPERATIONS.md), and [delivery plan](docs/DELIVERY_PLAN.md) before implementation.
 
 ## Local development
 
@@ -71,6 +71,8 @@ Submitting the same username and target role while an analysis is queued or runn
 
 Analysis creation is limited to 10 requests per direct client IP per 60-second window. Mutation requests require `Content-Length` and their bodies are capped at 16 KiB; Redis failure closes analysis creation with `503` instead of bypassing the limit. Override these deployment settings with `DEVDNA_ANALYSIS_RATE_LIMIT`, `DEVDNA_ANALYSIS_RATE_WINDOW_SECONDS`, and `DEVDNA_MAX_REQUEST_BYTES`. Configure a trusted-proxy allowlist before using forwarded client IP headers.
 
+Staging and production require `DEVDNA_API_KEYS` with comma-separated `client=secret` entries. Create analyses with `Authorization: Bearer client.secret`; limits then apply independently to each client. Every response carries a request ID, and `/metrics` exposes bounded Prometheus-format request counters and durations.
+
 If repository collection fails after the public profile succeeds, the analysis returns `partial` instead of discarding valid data. Its snapshot contains the profile and any repositories collected before the failure, while `error_message` explains what remains incomplete.
 
 A completed or partial response also includes `evidence_snapshot`. Evidence version `python-backend-evidence-v1` derives only from saved repository file paths and normalized Python manifest dependencies. Every claim contains direct GitHub source links; commit counts and contribution streaks are not analyzer inputs. See [the evidence rules](docs/EVIDENCE_RULES.md).
@@ -82,6 +84,8 @@ curl http://localhost:8000/v1/analyses/ANALYSIS_ID/report
 ```
 
 Open the responsive evidence report at `http://localhost:8000/reports/ANALYSIS_ID`. Reports show transparent requirement coverage rather than a universal developer score. See [the report contract](docs/REPORT_CONTRACT.md).
+
+Production operations include a 90-day terminal-analysis retention command, verified PostgreSQL backup/restore scripts, migration checks in CI, dependency update automation, and a bounded read-path load smoke test. Exact commands and failure procedures are in [the operations runbook](docs/OPERATIONS.md).
 
 Stop local services without deleting PostgreSQL or Redis volumes:
 

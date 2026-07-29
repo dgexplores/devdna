@@ -50,11 +50,11 @@ Every increment follows: define acceptance criteria → implement smallest verti
 
 ## Milestone 4 — production hardening
 
-**Status:** in progress. The first hardening slice adds an atomic Redis fixed-window limit to analysis creation, fails closed if the limiter is unavailable, rejects oversized mutation requests, and adds baseline browser security headers. Authentication remains intentionally deferred until the user and identity-provider model is selected.
+**Status:** completed on 30 July 2026 for the public-data release. Staging and production enforce bearer API keys for analysis creation and isolate atomic Redis limits per client. Mutation inputs are bounded, security headers are applied, and Redis enforcement fails closed. Validated request IDs connect responses to structured request and exception logs, while a Prometheus-format endpoint exposes bounded request metrics.
 
-- Authentication and per-user API throttling.
-- Monitoring, error tracking, backups, migrations, retention policy, load testing.
-- GitHub App OAuth and opt-in private-repository access only if justified.
+The operating baseline includes PostgreSQL backup and confirmed restore procedures, verified migrations in CI, automated dependency-update proposals, a 90-day terminal-analysis retention command, and a repeatable load smoke threshold. GitHub App OAuth and private-repository access are deliberately deferred because release 1 processes public GitHub evidence only; introducing those credentials would add risk without serving the current contract.
+
+**Done when:** the full static and automated suite passes, the production image builds, migrations reach a single clean head, authentication/rate-limit failure paths are exercised, a backup can be listed and restored, the load threshold passes, and all services can be stopped without deleting persistent volumes.
 
 ## Test strategy
 

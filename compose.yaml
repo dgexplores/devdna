@@ -3,6 +3,7 @@ services:
     build: .
     command: alembic upgrade head
     environment:
+      DEVDNA_ENVIRONMENT: ${DEVDNA_ENVIRONMENT:-development}
       DEVDNA_DATABASE_URL: postgresql+asyncpg://devdna:devdna@postgres:5432/devdna
     depends_on:
       postgres:
@@ -11,8 +12,10 @@ services:
   api:
     build: .
     environment:
+      DEVDNA_ENVIRONMENT: ${DEVDNA_ENVIRONMENT:-development}
       DEVDNA_DATABASE_URL: postgresql+asyncpg://devdna:devdna@postgres:5432/devdna
       DEVDNA_REDIS_URL: redis://redis:6379/0
+      DEVDNA_API_KEYS: ${DEVDNA_API_KEYS:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -25,6 +28,7 @@ services:
     build: .
     command: rq worker devdna --with-scheduler --url redis://redis:6379/0
     environment:
+      DEVDNA_ENVIRONMENT: ${DEVDNA_ENVIRONMENT:-development}
       DEVDNA_DATABASE_URL: postgresql+asyncpg://devdna:devdna@postgres:5432/devdna
       DEVDNA_REDIS_URL: redis://redis:6379/0
     depends_on:
@@ -32,6 +36,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  retention:
+    profiles: ["maintenance"]
+    build: .
+    command: python -m devdna.retention
+    environment:
+      DEVDNA_ENVIRONMENT: ${DEVDNA_ENVIRONMENT:-development}
+      DEVDNA_DATABASE_URL: postgresql+asyncpg://devdna:devdna@postgres:5432/devdna
+      DEVDNA_ANALYSIS_RETENTION_DAYS: ${DEVDNA_ANALYSIS_RETENTION_DAYS:-90}
+      DEVDNA_RETENTION_BATCH_SIZE: ${DEVDNA_RETENTION_BATCH_SIZE:-500}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   postgres:
     image: postgres:17-alpine
