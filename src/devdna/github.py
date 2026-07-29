@@ -1,18 +1,36 @@
+import base64
+import binascii
 import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Any, Protocol
 from urllib.parse import quote, urlencode
 
 import httpx2
 
 from devdna.config import Settings
-from devdna.schemas import GitHubProfile, GitHubRepository, GitHubSnapshot
+from devdna.evidence import extract_dependencies
+from devdna.schemas import (
+    GitHubProfile,
+    GitHubRepository,
+    GitHubSnapshot,
+    RepositoryInspection,
+)
 
 MAX_REPOSITORIES = 10
 MAX_REPOSITORY_PAGES = 3
 CACHE_TTL_SECONDS = 86400
+MAX_TREE_ENTRIES = 5000
+MAX_MANIFESTS_PER_REPOSITORY = 2
+MAX_MANIFEST_BYTES = 100_000
+MANIFEST_NAMES = {
+    "pipfile",
+    "pyproject.toml",
+    "requirements-dev.txt",
+    "requirements.txt",
+}
 
 
 class GitHubUserNotFound(Exception):
@@ -113,6 +131,13 @@ def select_repositories(
         key=lambda repository: repository.pushed_at or repository.updated_at,
         reverse=True,
     )[:limit]
+
+
+def summarize_warnings(warnings: list[str]) -> str:
+    visible = warnings[:3]
+    if len(warnings) > len(visible):
+        visible.append(f"{len(warnings) - len(visible)} additional repository inspections failed")
+    return "; ".join(visible)
 
 
 class GitHubClient:
@@ -270,6 +295,139 @@ class GitHubClient:
 
         return select_repositories(repositories), remaining, reset
 
+    async def get_repository_inspections(
+        self,
+        repositories: list[GitHubRepository],
+        username: str,
+    ) -> tuple[list[RepositoryInspection], list[str], int | None, int | None]:
+        inspections: list[RepositoryInspection] = []
+        warnings: list[str] = []
+        remaining: int | None = None
+        reset: int | None = None
+
+        async with self.client() as client:
+            for repository in repositories:
+                repository_path = quote(repository.full_name, safe="/")
+                branch = quote(repository.default_branch, safe="")
+                try:
+                    tree_response = await self.get_json(
+                        client,
+                        f"/repos/{repository_path}/git/trees/{branch}",
+                        username,
+                        {"recursive": 1},
+                    )
+                except GitHubRateLimited as error:
+                    reset = error.reset_at or reset
+                    warnings.append(
+                        f"{repository.full_name}: GitHub rate limit stopped file inspection"
+                    )
+                    break
+                except (
+                    GitHubTransientError,
+                    GitHubUserNotFound,
+                    httpx2.HTTPStatusError,
+                ):
+                    warnings.append(f"{repository.full_name}: file tree could not be inspected")
+                    continue
+
+                remaining = tree_response.rate_limit_remaining
+                reset = tree_response.rate_limit_reset
+                body = tree_response.body if isinstance(tree_response.body, dict) else {}
+                tree = body.get("tree", [])
+                if not isinstance(tree, list):
+                    warnings.append(f"{repository.full_name}: invalid file tree response")
+                    continue
+                file_paths = sorted(
+                    entry["path"]
+                    for entry in tree[:MAX_TREE_ENTRIES]
+                    if isinstance(entry, dict)
+                    and entry.get("type") == "blob"
+                    and isinstance(entry.get("path"), str)
+                )
+                truncated = bool(body.get("truncated")) or len(tree) > MAX_TREE_ENTRIES
+                if truncated:
+                    warnings.append(f"{repository.full_name}: file tree was truncated")
+
+                manifest_paths = [
+                    path
+                    for path in file_paths
+                    if PurePosixPath(path).name.lower() in MANIFEST_NAMES
+                    and len(PurePosixPath(path).parts) <= 3
+                ][:MAX_MANIFESTS_PER_REPOSITORY]
+                dependencies: set[str] = set()
+                loaded_manifests: list[str] = []
+                for manifest_path in manifest_paths:
+                    if remaining == 0:
+                        warnings.append(
+                            f"{repository.full_name}: GitHub rate limit stopped manifest inspection"
+                        )
+                        break
+                    content_path = quote(manifest_path, safe="/")
+                    try:
+                        content_response = await self.get_json(
+                            client,
+                            f"/repos/{repository_path}/contents/{content_path}",
+                            username,
+                        )
+                    except GitHubRateLimited as error:
+                        remaining = 0
+                        reset = error.reset_at or reset
+                        warnings.append(
+                            f"{repository.full_name}: GitHub rate limit stopped manifest inspection"
+                        )
+                        break
+                    except (
+                        GitHubTransientError,
+                        GitHubUserNotFound,
+                        httpx2.HTTPStatusError,
+                    ):
+                        warnings.append(
+                            f"{repository.full_name}: {manifest_path} could not be inspected"
+                        )
+                        continue
+
+                    remaining = content_response.rate_limit_remaining
+                    reset = content_response.rate_limit_reset
+                    content_body = (
+                        content_response.body if isinstance(content_response.body, dict) else {}
+                    )
+                    encoded = content_body.get("content")
+                    size = content_body.get("size")
+                    if (
+                        content_body.get("encoding") != "base64"
+                        or not isinstance(encoded, str)
+                        or not isinstance(size, int)
+                        or size > MAX_MANIFEST_BYTES
+                    ):
+                        warnings.append(
+                            f"{repository.full_name}: {manifest_path} content was unavailable"
+                        )
+                        continue
+                    try:
+                        content = base64.b64decode(encoded).decode()
+                    except (binascii.Error, UnicodeDecodeError):
+                        warnings.append(
+                            f"{repository.full_name}: {manifest_path} content was invalid"
+                        )
+                        continue
+                    dependencies.update(extract_dependencies(manifest_path, content))
+                    loaded_manifests.append(manifest_path)
+
+                inspections.append(
+                    RepositoryInspection(
+                        repository_full_name=repository.full_name,
+                        default_branch=repository.default_branch,
+                        file_paths=file_paths,
+                        tree_truncated=truncated,
+                        manifest_paths=loaded_manifests,
+                        dependencies=sorted(dependencies),
+                    )
+                )
+                if remaining == 0:
+                    break
+
+        return inspections, warnings, remaining, reset
+
     async def get_snapshot(self, username: str) -> GitHubSnapshot:
         snapshot = await self.get_profile(username)
         try:
@@ -288,11 +446,33 @@ class GitHubClient:
                 ),
                 error.warning,
             ) from error
-        return GitHubSnapshot(
+        (
+            inspections,
+            warnings,
+            inspection_remaining,
+            inspection_reset,
+        ) = await self.get_repository_inspections(repositories, username)
+        final_remaining = (
+            inspection_remaining
+            if inspection_remaining is not None
+            else remaining
+            if remaining is not None
+            else snapshot.rate_limit_remaining
+        )
+        final_reset = (
+            inspection_reset
+            if inspection_reset is not None
+            else reset
+            if reset is not None
+            else snapshot.rate_limit_reset
+        )
+        result = GitHubSnapshot(
             profile=snapshot.profile,
             repositories=repositories,
-            rate_limit_remaining=remaining
-            if remaining is not None
-            else snapshot.rate_limit_remaining,
-            rate_limit_reset=reset if reset is not None else snapshot.rate_limit_reset,
+            inspections=inspections,
+            rate_limit_remaining=final_remaining,
+            rate_limit_reset=final_reset,
         )
+        if warnings:
+            raise GitHubPartialResult(result, summarize_warnings(warnings))
+        return result

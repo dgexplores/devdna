@@ -7,6 +7,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from devdna.config import Settings, get_settings
+from devdna.evidence import analyze_evidence
 from devdna.github import (
     GitHubClient,
     GitHubPartialResult,
@@ -42,6 +43,10 @@ async def collect_profile(
         except GitHubPartialResult as error:
             analysis.status = "partial"
             analysis.profile_snapshot = error.snapshot.model_dump(mode="json")
+            analysis.evidence_snapshot = analyze_evidence(
+                error.snapshot,
+                analysis.target_role,
+            ).model_dump(mode="json")
             analysis.error_message = error.warning
         except GitHubUserNotFound:
             analysis.status = "failed"
@@ -65,6 +70,10 @@ async def collect_profile(
         else:
             analysis.status = "completed"
             analysis.profile_snapshot = snapshot.model_dump(mode="json")
+            analysis.evidence_snapshot = analyze_evidence(
+                snapshot,
+                analysis.target_role,
+            ).model_dump(mode="json")
         await session.commit()
 
 

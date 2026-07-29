@@ -73,7 +73,7 @@ async def create_analysis(
             collect_profile_job,
             analysis.id,
             job_id=analysis.id,
-            job_timeout=60,
+            job_timeout=300,
             result_ttl=0,
             failure_ttl=86400,
             retry=Retry(max=2, interval=[30, 120]),

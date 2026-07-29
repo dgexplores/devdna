@@ -29,6 +29,8 @@ Every increment follows: define acceptance criteria → implement smallest verti
 
 ## Milestone 2 — evidence engine
 
+**Status:** completed on 30 July 2026. DevDNA inspects bounded repository trees and up to two Python manifests per selected repository, saves normalized inspection facts, and emits versioned, repository-specific evidence with direct GitHub source links. Fixture tests prove that absent manifests do not produce Python skill claims and that commit activity is never an evidence input.
+
 - Repository selection rules.
 - File-tree and dependency analysis.
 - Rules for tests, CI, Docker, docs, API, database, and Python framework evidence.

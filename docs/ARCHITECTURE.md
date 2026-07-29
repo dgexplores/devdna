@@ -39,6 +39,8 @@ role_rubrics(id, slug, version, definition_json)
 reports(id, analysis_run_id, rubric_version, report_json)
 ```
 
+The current release stores the immutable public GitHub collection in `profile_snapshot` and the deterministic analyzer output in `evidence_snapshot` on each analysis run. This keeps the first evidence contract atomic and reproducible. Normalize repositories and evidence into dedicated tables when recruiter queries or cross-analysis reporting require indexed access.
+
 ## Cache and rate-limit policy
 
 - Cache public GitHub responses with ETags and `If-None-Match` where available.

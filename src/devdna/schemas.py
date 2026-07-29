@@ -26,6 +26,7 @@ class AnalysisResponse(BaseModel):
     target_role: str
     status: AnalysisStatus
     profile_snapshot: dict[str, Any] | None
+    evidence_snapshot: dict[str, Any] | None
     error_message: str | None
     created_at: datetime
     updated_at: datetime
@@ -71,8 +72,41 @@ class GitHubRepository(BaseModel):
     pushed_at: datetime | None = None
 
 
+class RepositoryInspection(BaseModel):
+    repository_full_name: str
+    default_branch: str
+    file_paths: list[str] = Field(default_factory=list)
+    tree_truncated: bool = False
+    manifest_paths: list[str] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+
+
 class GitHubSnapshot(BaseModel):
     profile: GitHubProfile
     repositories: list[GitHubRepository] = Field(default_factory=list)
+    inspections: list[RepositoryInspection] = Field(default_factory=list)
     rate_limit_remaining: int | None
     rate_limit_reset: int | None
+
+
+class EvidenceSource(BaseModel):
+    repository: str
+    path: str
+    url: str
+
+
+class EvidenceItem(BaseModel):
+    key: str
+    category: str
+    claim: str
+    repository: str
+    sources: list[EvidenceSource]
+
+
+class EvidenceSnapshot(BaseModel):
+    schema_version: str
+    analyzer_version: str
+    target_role: str
+    rubric_version: str
+    repositories_analyzed: int
+    items: list[EvidenceItem] = Field(default_factory=list)

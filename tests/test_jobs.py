@@ -9,7 +9,12 @@ from devdna.database import Base
 from devdna.github import GitHubPartialResult, GitHubTransientError
 from devdna.jobs import collect_profile
 from devdna.models import AnalysisRun
-from devdna.schemas import GitHubProfile, GitHubRepository, GitHubSnapshot
+from devdna.schemas import (
+    GitHubProfile,
+    GitHubRepository,
+    GitHubSnapshot,
+    RepositoryInspection,
+)
 
 
 def test_collect_profile_completes_analysis(tmp_path: Path) -> None:
@@ -62,6 +67,15 @@ def test_collect_profile_completes_analysis(tmp_path: Path) -> None:
                         pushed_at=datetime(2026, 1, 1, tzinfo=UTC),
                     )
                 ],
+                inspections=[
+                    RepositoryInspection(
+                        repository_full_name="octocat/project",
+                        default_branch="main",
+                        file_paths=["pyproject.toml", "src/main.py"],
+                        manifest_paths=["pyproject.toml"],
+                        dependencies=["fastapi"],
+                    )
+                ],
                 rate_limit_remaining=59,
                 rate_limit_reset=123456,
             )
@@ -75,6 +89,9 @@ def test_collect_profile_completes_analysis(tmp_path: Path) -> None:
             assert result.profile_snapshot is not None
             assert result.profile_snapshot["profile"]["login"] == "octocat"
             assert result.profile_snapshot["repositories"][0]["name"] == "project"
+            assert result.evidence_snapshot is not None
+            assert result.evidence_snapshot["analyzer_version"] == ("python-backend-evidence-v1")
+            assert result.evidence_snapshot["items"][0]["key"] == "python.project"
         await engine.dispose()
 
     asyncio.run(scenario())

@@ -67,6 +67,7 @@ def test_create_and_get_analysis(tmp_path: Path) -> None:
     assert duplicate.json()["id"] == created.json()["id"]
     assert fetched.status_code == 200
     assert len(queue.jobs) == 1
+    assert queue.jobs[0][1]["job_timeout"] == 300
     assert queue.jobs[0][1]["retry"].max == 2
 
 
@@ -124,6 +125,14 @@ def test_get_analysis_exposes_partial_result(tmp_path: Path) -> None:
                 assert analysis is not None
                 analysis.status = "partial"
                 analysis.profile_snapshot = {"profile": {"login": "octocat"}}
+                analysis.evidence_snapshot = {
+                    "schema_version": "1",
+                    "analyzer_version": "python-backend-evidence-v1",
+                    "target_role": "python_backend_developer",
+                    "rubric_version": "python_backend_developer:v1",
+                    "repositories_analyzed": 0,
+                    "items": [],
+                }
                 analysis.error_message = "Repository collection failed"
                 await session.commit()
             await engine.dispose()
@@ -136,4 +145,7 @@ def test_get_analysis_exposes_partial_result(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "partial"
     assert response.json()["profile_snapshot"]["profile"]["login"] == "octocat"
+    assert response.json()["evidence_snapshot"]["analyzer_version"] == (
+        "python-backend-evidence-v1"
+    )
     assert response.json()["error_message"] == "Repository collection failed"

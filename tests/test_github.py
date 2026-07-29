@@ -1,4 +1,5 @@
 import asyncio
+import base64
 
 import httpx2
 import pytest
@@ -147,6 +148,8 @@ def test_get_snapshot_paginates_until_it_finds_eligible_repositories() -> None:
     def handler(request: httpx2.Request) -> httpx2.Response:
         if request.url.path == "/users/octocat":
             return httpx2.Response(200, json=PROFILE)
+        if request.url.path == "/repos/octocat/new/git/trees/main":
+            return httpx2.Response(200, json={"tree": [], "truncated": False})
         if request.url.params.get("page") == "2":
             repository = {**REPOSITORY, "id": 4, "name": "new", "full_name": "octocat/new"}
             return httpx2.Response(
@@ -173,6 +176,77 @@ def test_get_snapshot_paginates_until_it_finds_eligible_repositories() -> None:
 
     assert [repository.name for repository in snapshot.repositories] == ["new"]
     assert snapshot.rate_limit_remaining == 57
+
+
+def test_get_snapshot_collects_file_tree_and_manifest_dependencies() -> None:
+    manifest = """
+[project]
+dependencies = ["fastapi>=0.100", "SQLAlchemy~=2.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+"""
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/users/octocat":
+            return httpx2.Response(200, json=PROFILE)
+        if request.url.path == "/users/octocat/repos":
+            return httpx2.Response(200, json=[REPOSITORY])
+        if request.url.path == "/repos/octocat/project/git/trees/main":
+            return httpx2.Response(
+                200,
+                json={
+                    "tree": [
+                        {"path": "pyproject.toml", "type": "blob"},
+                        {"path": "src/main.py", "type": "blob"},
+                        {"path": "tests/test_main.py", "type": "blob"},
+                        {"path": ".github/workflows/ci.yml", "type": "blob"},
+                        {"path": "Dockerfile", "type": "blob"},
+                        {"path": "README.md", "type": "blob"},
+                        {"path": "alembic.ini", "type": "blob"},
+                    ],
+                    "truncated": False,
+                },
+            )
+        if request.url.path == "/repos/octocat/project/contents/pyproject.toml":
+            return httpx2.Response(
+                200,
+                json={
+                    "encoding": "base64",
+                    "size": len(manifest),
+                    "content": base64.b64encode(manifest.encode()).decode(),
+                },
+                headers={"x-ratelimit-remaining": "55"},
+            )
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    snapshot = asyncio.run(
+        GitHubClient(settings(), httpx2.MockTransport(handler)).get_snapshot("octocat")
+    )
+
+    assert len(snapshot.inspections) == 1
+    inspection = snapshot.inspections[0]
+    assert inspection.repository_full_name == "octocat/project"
+    assert inspection.manifest_paths == ["pyproject.toml"]
+    assert inspection.dependencies == ["fastapi", "pytest", "sqlalchemy"]
+    assert inspection.tree_truncated is False
+    assert snapshot.rate_limit_remaining == 55
+
+
+def test_get_snapshot_returns_partial_when_file_tree_fails() -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/users/octocat":
+            return httpx2.Response(200, json=PROFILE)
+        if request.url.path == "/users/octocat/repos":
+            return httpx2.Response(200, json=[REPOSITORY])
+        return httpx2.Response(503)
+
+    with pytest.raises(GitHubPartialResult) as raised:
+        asyncio.run(GitHubClient(settings(), httpx2.MockTransport(handler)).get_snapshot("octocat"))
+
+    assert raised.value.snapshot.repositories[0].full_name == "octocat/project"
+    assert raised.value.snapshot.inspections == []
+    assert raised.value.warning == "octocat/project: file tree could not be inspected"
 
 
 def test_get_snapshot_preserves_collected_data_when_repository_page_fails() -> None:
