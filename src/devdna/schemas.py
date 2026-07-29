@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
-AnalysisStatus = Literal["queued", "running", "completed", "failed"]
+AnalysisStatus = Literal["queued", "running", "completed", "partial", "failed"]
 
 
 class AnalysisCreate(BaseModel):

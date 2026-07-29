@@ -68,3 +68,5 @@ curl http://localhost:8000/v1/analyses/ANALYSIS_ID
 ```
 
 Submitting the same username and target role while an analysis is queued or running returns the existing analysis instead of creating duplicate work. Successful GitHub responses are cached in Redis for 24 hours and revalidated with ETags. Transient GitHub failures are retried twice with bounded delays; rate-limit failures report GitHub's reset time.
+
+If repository collection fails after the public profile succeeds, the analysis returns `partial` instead of discarding valid data. Its snapshot contains the profile and any repositories collected before the failure, while `error_message` explains what remains incomplete.

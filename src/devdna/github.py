@@ -29,6 +29,28 @@ class GitHubTransientError(Exception):
     pass
 
 
+class GitHubPartialResult(Exception):
+    def __init__(self, snapshot: GitHubSnapshot, warning: str) -> None:
+        self.snapshot = snapshot
+        self.warning = warning
+        super().__init__(warning)
+
+
+class RepositoryCollectionFailed(Exception):
+    def __init__(
+        self,
+        repositories: list[GitHubRepository],
+        rate_limit_remaining: int | None,
+        rate_limit_reset: int | None,
+        warning: str,
+    ) -> None:
+        self.repositories = repositories
+        self.rate_limit_remaining = rate_limit_remaining
+        self.rate_limit_reset = rate_limit_reset
+        self.warning = warning
+        super().__init__(warning)
+
+
 class ResponseCache(Protocol):
     async def get(self, key: str) -> bytes | str | None: ...
 
@@ -213,7 +235,28 @@ class GitHubClient:
             for _ in range(MAX_REPOSITORY_PAGES):
                 if next_url is None:
                     break
-                response = await self.get_json(client, next_url, username, params)
+                try:
+                    response = await self.get_json(client, next_url, username, params)
+                except GitHubRateLimited as error:
+                    reset = error.reset_at or reset
+                    warning = (
+                        f"Repository collection stopped by GitHub rate limit; retry after {reset}"
+                        if reset
+                        else "Repository collection stopped by GitHub rate limit"
+                    )
+                    raise RepositoryCollectionFailed(
+                        select_repositories(repositories),
+                        remaining,
+                        reset,
+                        warning,
+                    ) from error
+                except (GitHubTransientError, GitHubUserNotFound, httpx2.HTTPStatusError) as error:
+                    raise RepositoryCollectionFailed(
+                        select_repositories(repositories),
+                        remaining,
+                        reset,
+                        "Repository collection failed; profile data is still available",
+                    ) from error
                 repositories.extend(
                     GitHubRepository.model_validate(repository) for repository in response.body
                 )
@@ -229,7 +272,22 @@ class GitHubClient:
 
     async def get_snapshot(self, username: str) -> GitHubSnapshot:
         snapshot = await self.get_profile(username)
-        repositories, remaining, reset = await self.get_repositories(username)
+        try:
+            repositories, remaining, reset = await self.get_repositories(username)
+        except RepositoryCollectionFailed as error:
+            raise GitHubPartialResult(
+                GitHubSnapshot(
+                    profile=snapshot.profile,
+                    repositories=error.repositories,
+                    rate_limit_remaining=error.rate_limit_remaining
+                    if error.rate_limit_remaining is not None
+                    else snapshot.rate_limit_remaining,
+                    rate_limit_reset=error.rate_limit_reset
+                    if error.rate_limit_reset is not None
+                    else snapshot.rate_limit_reset,
+                ),
+                error.warning,
+            ) from error
         return GitHubSnapshot(
             profile=snapshot.profile,
             repositories=repositories,

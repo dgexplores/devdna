@@ -7,6 +7,7 @@ from pydantic import SecretStr
 from devdna.config import Settings
 from devdna.github import (
     GitHubClient,
+    GitHubPartialResult,
     GitHubRateLimited,
     GitHubTransientError,
     GitHubUserNotFound,
@@ -172,6 +173,54 @@ def test_get_snapshot_paginates_until_it_finds_eligible_repositories() -> None:
 
     assert [repository.name for repository in snapshot.repositories] == ["new"]
     assert snapshot.rate_limit_remaining == 57
+
+
+def test_get_snapshot_preserves_collected_data_when_repository_page_fails() -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/users/octocat":
+            return httpx2.Response(
+                200,
+                json=PROFILE,
+                headers={"x-ratelimit-remaining": "59"},
+            )
+        if request.url.params.get("page") == "2":
+            return httpx2.Response(503)
+        return httpx2.Response(
+            200,
+            json=[REPOSITORY],
+            headers={
+                "link": '<https://api.github.com/users/octocat/repos?page=2>; rel="next"',
+                "x-ratelimit-remaining": "58",
+            },
+        )
+
+    with pytest.raises(GitHubPartialResult) as raised:
+        asyncio.run(GitHubClient(settings(), httpx2.MockTransport(handler)).get_snapshot("octocat"))
+
+    assert raised.value.snapshot.profile.login == "octocat"
+    assert [repository.name for repository in raised.value.snapshot.repositories] == ["project"]
+    assert raised.value.snapshot.rate_limit_remaining == 58
+    assert raised.value.warning == ("Repository collection failed; profile data is still available")
+
+
+def test_get_snapshot_returns_partial_profile_at_repository_rate_limit() -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/users/octocat":
+            return httpx2.Response(200, json=PROFILE)
+        return httpx2.Response(
+            403,
+            headers={"x-ratelimit-remaining": "0", "x-ratelimit-reset": "123456"},
+        )
+
+    with pytest.raises(GitHubPartialResult) as raised:
+        asyncio.run(GitHubClient(settings(), httpx2.MockTransport(handler)).get_snapshot("octocat"))
+
+    assert raised.value.snapshot.profile.login == "octocat"
+    assert raised.value.snapshot.repositories == []
+    assert raised.value.snapshot.rate_limit_reset == 123456
+    assert raised.value.warning == (
+        "Repository collection stopped by GitHub rate limit; retry after 123456"
+    )
 
 
 def test_repository_selection_filters_and_caps_results() -> None:

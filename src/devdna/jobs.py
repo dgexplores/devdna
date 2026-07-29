@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from devdna.config import Settings, get_settings
 from devdna.github import (
     GitHubClient,
+    GitHubPartialResult,
     GitHubRateLimited,
     GitHubTransientError,
     GitHubUserNotFound,
@@ -38,6 +39,10 @@ async def collect_profile(
 
         try:
             snapshot = await fetch_snapshot(analysis.github_username)
+        except GitHubPartialResult as error:
+            analysis.status = "partial"
+            analysis.profile_snapshot = error.snapshot.model_dump(mode="json")
+            analysis.error_message = error.warning
         except GitHubUserNotFound:
             analysis.status = "failed"
             analysis.error_message = "GitHub user not found"

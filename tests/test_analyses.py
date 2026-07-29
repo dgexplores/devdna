@@ -3,11 +3,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from devdna.config import Settings
 from devdna.database import Base
 from devdna.main import create_app
+from devdna.models import AnalysisRun
 
 
 class FakeQueue:
@@ -100,3 +101,39 @@ def test_marks_analysis_failed_when_queue_is_unavailable(tmp_path: Path) -> None
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Analysis queue unavailable"
+
+
+def test_get_analysis_exposes_partial_result(tmp_path: Path) -> None:
+    database_path = tmp_path / "partial-api.db"
+    client = create_test_client(database_path, FakeQueue())
+    try:
+        created = client.post(
+            "/v1/analyses",
+            json={
+                "github_username": "octocat",
+                "target_role": "python_backend_developer",
+            },
+        )
+        analysis_id = created.json()["id"]
+
+        async def mark_partial() -> None:
+            engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+            sessions = async_sessionmaker(engine, expire_on_commit=False)
+            async with sessions() as session:
+                analysis = await session.get(AnalysisRun, analysis_id)
+                assert analysis is not None
+                analysis.status = "partial"
+                analysis.profile_snapshot = {"profile": {"login": "octocat"}}
+                analysis.error_message = "Repository collection failed"
+                await session.commit()
+            await engine.dispose()
+
+        asyncio.run(mark_partial())
+        response = client.get(f"/v1/analyses/{analysis_id}")
+    finally:
+        client.__exit__(None, None, None)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "partial"
+    assert response.json()["profile_snapshot"]["profile"]["login"] == "octocat"
+    assert response.json()["error_message"] == "Repository collection failed"
