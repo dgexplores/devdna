@@ -49,6 +49,13 @@ def test_create_and_get_analysis(tmp_path: Path) -> None:
                 "target_role": "python_backend_developer",
             },
         )
+        duplicate = client.post(
+            "/v1/analyses",
+            json={
+                "github_username": "octocat",
+                "target_role": "python_backend_developer",
+            },
+        )
         fetched = client.get(f"/v1/analyses/{created.json()['id']}")
     finally:
         client.__exit__(None, None, None)
@@ -56,8 +63,10 @@ def test_create_and_get_analysis(tmp_path: Path) -> None:
     assert created.status_code == 202
     assert created.json()["github_username"] == "octocat"
     assert created.json()["status"] == "queued"
+    assert duplicate.json()["id"] == created.json()["id"]
     assert fetched.status_code == 200
     assert len(queue.jobs) == 1
+    assert queue.jobs[0][1]["retry"].max == 2
 
 
 def test_rejects_invalid_github_username(tmp_path: Path) -> None:

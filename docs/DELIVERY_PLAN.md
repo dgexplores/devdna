@@ -18,7 +18,7 @@ Every increment follows: define acceptance criteria → implement smallest verti
 
 ## Milestone 1 — reliable GitHub collection
 
-**Status:** profile and bounded repository collection completed on 30 July 2026. A validated request is persisted, queued, and processed by the worker. DevDNA follows repository pagination when necessary, selects up to 10 recently pushed owner repositories, excludes forks/archived/disabled/empty repositories, and preserves rate-limit metadata. ETag caching, duplicate suppression, and retry scheduling remain in this milestone.
+**Status:** collection reliability completed on 30 July 2026. A validated request is persisted, queued, and processed by the worker. DevDNA follows repository pagination when necessary, selects up to 10 recently pushed owner repositories, excludes forks/archived/disabled/empty repositories, and preserves rate-limit metadata. GitHub responses use a 24-hour Redis ETag cache, the database prevents duplicate active analyses, and transient failures receive two bounded retries. A partial-result state remains before this milestone closes.
 
 - `POST /v1/analyses` and `GET /v1/analyses/{id}`.
 - Background job state machine: queued, running, completed, partial, failed.

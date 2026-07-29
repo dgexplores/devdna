@@ -1,11 +1,19 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from typing import cast
 
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from devdna.config import Settings, get_settings
-from devdna.github import GitHubClient, GitHubRateLimited, GitHubUserNotFound
+from devdna.github import (
+    GitHubClient,
+    GitHubRateLimited,
+    GitHubTransientError,
+    GitHubUserNotFound,
+    ResponseCache,
+)
 from devdna.models import AnalysisRun
 from devdna.schemas import GitHubSnapshot
 
@@ -40,6 +48,11 @@ async def collect_profile(
                 if error.reset_at
                 else "GitHub rate limit exceeded"
             )
+        except GitHubTransientError:
+            analysis.status = "failed"
+            analysis.error_message = "Temporary GitHub failure; automatic retry scheduled"
+            await session.commit()
+            raise
         except Exception:
             analysis.status = "failed"
             analysis.error_message = "GitHub request failed"
@@ -52,11 +65,13 @@ async def collect_profile(
 
 async def run_profile_collection(analysis_id: str, settings: Settings) -> None:
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    redis = Redis.from_url(settings.redis_url)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
-    client = GitHubClient(settings)
+    client = GitHubClient(settings, cache=cast(ResponseCache, redis))
     try:
         await collect_profile(analysis_id, sessions, client.get_snapshot)
     finally:
+        await redis.aclose()
         await engine.dispose()
 
 

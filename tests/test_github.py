@@ -8,6 +8,7 @@ from devdna.config import Settings
 from devdna.github import (
     GitHubClient,
     GitHubRateLimited,
+    GitHubTransientError,
     GitHubUserNotFound,
     select_repositories,
 )
@@ -52,6 +53,18 @@ REPOSITORY = {
 }
 
 
+class MemoryCache:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
+    async def get(self, key: str) -> str | None:
+        return self.values.get(key)
+
+    async def set(self, key: str, value: str, *, ex: int) -> None:
+        assert ex == 86400
+        self.values[key] = value
+
+
 def settings() -> Settings:
     return Settings(environment="test", github_token=SecretStr("test-token"))
 
@@ -91,6 +104,41 @@ def test_get_profile_reports_rate_limit_reset() -> None:
     )
 
     with pytest.raises(GitHubRateLimited, match="rate limit"):
+        asyncio.run(GitHubClient(settings(), transport).get_profile("octocat"))
+
+
+def test_get_profile_reuses_cached_body_after_etag_validation() -> None:
+    requests = 0
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        nonlocal requests
+        requests += 1
+        if requests == 1:
+            return httpx2.Response(
+                200,
+                json=PROFILE,
+                headers={"etag": '"profile-v1"', "x-ratelimit-remaining": "58"},
+            )
+        assert request.headers["if-none-match"] == '"profile-v1"'
+        return httpx2.Response(304)
+
+    client = GitHubClient(
+        settings(),
+        httpx2.MockTransport(handler),
+        cache=MemoryCache(),
+    )
+    first = asyncio.run(client.get_profile("octocat"))
+    second = asyncio.run(client.get_profile("octocat"))
+
+    assert first.profile == second.profile
+    assert second.rate_limit_remaining == 58
+    assert requests == 2
+
+
+def test_get_profile_marks_server_errors_as_transient() -> None:
+    transport = httpx2.MockTransport(lambda _: httpx2.Response(503))
+
+    with pytest.raises(GitHubTransientError, match="temporary"):
         asyncio.run(GitHubClient(settings(), transport).get_profile("octocat"))
 
 

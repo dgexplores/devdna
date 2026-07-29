@@ -2,9 +2,11 @@ import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from devdna.database import Base
+from devdna.github import GitHubTransientError
 from devdna.jobs import collect_profile
 from devdna.models import AnalysisRun
 from devdna.schemas import GitHubProfile, GitHubRepository, GitHubSnapshot
@@ -73,6 +75,39 @@ def test_collect_profile_completes_analysis(tmp_path: Path) -> None:
             assert result.profile_snapshot is not None
             assert result.profile_snapshot["profile"]["login"] == "octocat"
             assert result.profile_snapshot["repositories"][0]["name"] == "project"
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_collect_profile_preserves_retryable_failure(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'retry.db'}")
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with sessions() as session:
+            session.add(
+                AnalysisRun(
+                    id="retry-id",
+                    github_username="octocat",
+                    target_role="python_backend_developer",
+                    status="queued",
+                )
+            )
+            await session.commit()
+
+        async def fail(_: str) -> GitHubSnapshot:
+            raise GitHubTransientError("temporary")
+
+        with pytest.raises(GitHubTransientError):
+            await collect_profile("retry-id", sessions, fail)
+
+        async with sessions() as session:
+            result = await session.get(AnalysisRun, "retry-id")
+            assert result is not None
+            assert result.status == "failed"
+            assert result.error_message == "Temporary GitHub failure; automatic retry scheduled"
         await engine.dispose()
 
     asyncio.run(scenario())

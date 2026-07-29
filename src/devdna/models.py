@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, String, Text
+from sqlalchemy import JSON, CheckConstraint, DateTime, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from devdna.database import Base
@@ -13,6 +13,14 @@ class AnalysisRun(Base):
         CheckConstraint(
             "status IN ('queued', 'running', 'completed', 'failed')",
             name="valid_status",
+        ),
+        Index(
+            "uq_active_analysis",
+            "github_username",
+            "target_role",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+            sqlite_where=text("status IN ('queued', 'running')"),
         ),
     )
 

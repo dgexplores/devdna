@@ -3,7 +3,9 @@ from typing import Annotated, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from rq import Queue
+from rq import Queue, Retry
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from devdna.database import get_session
@@ -23,12 +25,32 @@ SessionDependency = Annotated[AsyncSession, Depends(get_session)]
 QueueDependency = Annotated[Queue, Depends(get_queue)]
 
 
+async def find_active_analysis(
+    session: AsyncSession,
+    payload: AnalysisCreate,
+) -> AnalysisRun | None:
+    return cast(
+        AnalysisRun | None,
+        await session.scalar(
+            select(AnalysisRun).where(
+                AnalysisRun.github_username == payload.github_username,
+                AnalysisRun.target_role == payload.target_role,
+                AnalysisRun.status.in_(("queued", "running")),
+            )
+        ),
+    )
+
+
 @router.post("", response_model=AnalysisResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_analysis(
     payload: AnalysisCreate,
     session: SessionDependency,
     queue: QueueDependency,
 ) -> AnalysisRun:
+    existing = await find_active_analysis(session, payload)
+    if existing:
+        return existing
+
     analysis = AnalysisRun(
         id=str(uuid4()),
         github_username=payload.github_username,
@@ -36,7 +58,14 @@ async def create_analysis(
         status="queued",
     )
     session.add(analysis)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        existing = await find_active_analysis(session, payload)
+        if existing:
+            return existing
+        raise
     await session.refresh(analysis)
 
     try:
@@ -47,6 +76,7 @@ async def create_analysis(
             job_timeout=60,
             result_ttl=0,
             failure_ttl=86400,
+            retry=Retry(max=2, interval=[30, 120]),
         )
     except Exception as error:
         analysis.status = "failed"
