@@ -6,7 +6,7 @@ Every increment follows: define acceptance criteria → implement smallest verti
 
 ## Milestone 0 — foundation
 
-**Status:** implemented on 30 July 2026. Python checks and migration SQL pass locally. Docker runtime verification remains pending because Docker is unavailable in the current development environment.
+**Status:** completed on 30 July 2026. Python checks pass, the Docker stack builds and starts, migrations complete, and both API health endpoints pass against PostgreSQL and Redis.
 
 - Python project tooling, formatting, linting, type checking, pytest.
 - FastAPI health endpoint.

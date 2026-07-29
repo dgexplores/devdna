@@ -1,4 +1,13 @@
 services:
+  migrate:
+    build: .
+    command: alembic upgrade head
+    environment:
+      DEVDNA_DATABASE_URL: postgresql+asyncpg://devdna:devdna@postgres:5432/devdna
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build: .
     environment:
@@ -7,8 +16,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 

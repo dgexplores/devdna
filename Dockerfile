@@ -8,8 +8,10 @@ ENV PATH="/app/.venv/bin:$PATH" \
 WORKDIR /app
 COPY --from=uv /uv /bin/uv
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev
 COPY src ./src
+COPY alembic.ini ./
+COPY migrations ./migrations
+RUN uv sync --frozen --no-dev
 
 RUN useradd --create-home --uid 10001 appuser
 USER appuser
