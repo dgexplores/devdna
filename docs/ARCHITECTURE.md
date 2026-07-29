@@ -49,11 +49,14 @@ The current release stores the immutable public GitHub collection in `profile_sn
 - Cap repository inspection in release 1 (for example, 10 selected repositories) to bound latency and API usage.
 - Use exponential backoff with jitter for transient `429` and `5xx` responses. Do not retry invalid requests or missing users.
 - Use a Redis lock keyed by analysis cache key so duplicate requests create one job.
+- Limit `POST /v1/analyses` with an atomic Redis fixed-window counter. The current direct-peer IP key is safe for direct deployment; configure trusted proxy addresses before accepting forwarded client IPs.
+- Fail analysis creation closed when Redis cannot enforce the limit. Return the limit, remaining count, and retry interval in standard response headers.
 
 ## Security and privacy baseline
 
 - Begin with public GitHub data only.
 - Keep secrets in deployment environment variables; never return them in logs or API responses.
+- Bound mutation request bodies and apply content-type, framing, referrer, permissions, and report-page content security headers in the API.
 - Validate upload and URL inputs before future CV support.
 - Encrypt OAuth tokens at rest when OAuth is added.
 - Define retention/deletion controls before storing CVs or recruitment lists.

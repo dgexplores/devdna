@@ -69,6 +69,8 @@ curl http://localhost:8000/v1/analyses/ANALYSIS_ID
 
 Submitting the same username and target role while an analysis is queued or running returns the existing analysis instead of creating duplicate work. Successful GitHub responses are cached in Redis for 24 hours and revalidated with ETags. Transient GitHub failures are retried twice with bounded delays; rate-limit failures report GitHub's reset time.
 
+Analysis creation is limited to 10 requests per direct client IP per 60-second window. Mutation requests require `Content-Length` and their bodies are capped at 16 KiB; Redis failure closes analysis creation with `503` instead of bypassing the limit. Override these deployment settings with `DEVDNA_ANALYSIS_RATE_LIMIT`, `DEVDNA_ANALYSIS_RATE_WINDOW_SECONDS`, and `DEVDNA_MAX_REQUEST_BYTES`. Configure a trusted-proxy allowlist before using forwarded client IP headers.
+
 If repository collection fails after the public profile succeeds, the analysis returns `partial` instead of discarding valid data. Its snapshot contains the profile and any repositories collected before the failure, while `error_message` explains what remains incomplete.
 
 A completed or partial response also includes `evidence_snapshot`. Evidence version `python-backend-evidence-v1` derives only from saved repository file paths and normalized Python manifest dependencies. Every claim contains direct GitHub source links; commit counts and contribution streaks are not analyzer inputs. See [the evidence rules](docs/EVIDENCE_RULES.md).
@@ -80,3 +82,9 @@ curl http://localhost:8000/v1/analyses/ANALYSIS_ID/report
 ```
 
 Open the responsive evidence report at `http://localhost:8000/reports/ANALYSIS_ID`. Reports show transparent requirement coverage rather than a universal developer score. See [the report contract](docs/REPORT_CONTRACT.md).
+
+Stop local services without deleting PostgreSQL or Redis volumes:
+
+```bash
+docker compose down
+```

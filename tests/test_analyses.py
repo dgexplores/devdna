@@ -24,7 +24,26 @@ class FakeQueue:
         self.jobs.append((args, kwargs))
 
 
-def create_test_client(database_path: Path, queue: FakeQueue) -> TestClient:
+class FakeRateLimiter:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.counts: dict[str, int] = {}
+
+    async def eval(self, _: str, __: int, key: str, window: int) -> list[int]:
+        if self.fail:
+            raise RuntimeError("redis unavailable")
+        self.counts[key] = self.counts.get(key, 0) + 1
+        return [self.counts[key], window]
+
+
+def create_test_client(
+    database_path: Path,
+    queue: FakeQueue,
+    *,
+    rate_limit: int = 10,
+    max_request_bytes: int = 16_384,
+    rate_limiter: FakeRateLimiter | None = None,
+) -> TestClient:
     database_url = f"sqlite+aiosqlite:///{database_path}"
 
     async def create_schema() -> None:
@@ -34,10 +53,18 @@ def create_test_client(database_path: Path, queue: FakeQueue) -> TestClient:
         await engine.dispose()
 
     asyncio.run(create_schema())
-    app = create_app(Settings(environment="test", database_url=database_url))
+    app = create_app(
+        Settings(
+            environment="test",
+            database_url=database_url,
+            analysis_rate_limit=rate_limit,
+            max_request_bytes=max_request_bytes,
+        )
+    )
     client = TestClient(app)
     client.__enter__()
     app.state.queue = queue
+    app.state.rate_limiter = rate_limiter or FakeRateLimiter()
     return client
 
 
@@ -93,6 +120,88 @@ def test_rejects_invalid_github_username(tmp_path: Path) -> None:
         client.__exit__(None, None, None)
 
     assert response.status_code == 422
+
+
+def test_rejects_oversized_analysis_request(tmp_path: Path) -> None:
+    client = create_test_client(
+        tmp_path / "oversized.db",
+        FakeQueue(),
+        max_request_bytes=1024,
+    )
+    try:
+        response = client.post(
+            "/v1/analyses",
+            content=b"x" * 1025,
+            headers={"Content-Type": "application/json"},
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Request body is too large"
+
+
+def test_requires_length_for_analysis_request(tmp_path: Path) -> None:
+    client = create_test_client(tmp_path / "length-required.db", FakeQueue())
+    try:
+        response = client.post(
+            "/v1/analyses",
+            content=iter([b"{}"]),
+            headers={"Content-Type": "application/json"},
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert response.status_code == 411
+    assert response.json()["detail"] == "Content-Length header is required"
+
+
+def test_rate_limits_analysis_creation(tmp_path: Path) -> None:
+    client = create_test_client(tmp_path / "rate-limit.db", FakeQueue(), rate_limit=1)
+    try:
+        allowed = client.post(
+            "/v1/analyses",
+            json={
+                "github_username": "octocat",
+                "target_role": "python_backend_developer",
+            },
+        )
+        blocked = client.post(
+            "/v1/analyses",
+            json={
+                "github_username": "another-user",
+                "target_role": "python_backend_developer",
+            },
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert allowed.status_code == 202
+    assert allowed.headers["X-RateLimit-Remaining"] == "0"
+    assert blocked.status_code == 429
+    assert blocked.headers["X-RateLimit-Limit"] == "1"
+    assert int(blocked.headers["Retry-After"]) > 0
+
+
+def test_fails_closed_when_rate_limiter_is_unavailable(tmp_path: Path) -> None:
+    client = create_test_client(
+        tmp_path / "rate-limit-down.db",
+        FakeQueue(),
+        rate_limiter=FakeRateLimiter(fail=True),
+    )
+    try:
+        response = client.post(
+            "/v1/analyses",
+            json={
+                "github_username": "octocat",
+                "target_role": "python_backend_developer",
+            },
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Rate limiter unavailable"
 
 
 def test_marks_analysis_failed_when_queue_is_unavailable(tmp_path: Path) -> None:

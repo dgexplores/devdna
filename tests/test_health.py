@@ -23,7 +23,13 @@ def client(checks: dict[str, str]) -> TestClient:
 
 def test_liveness() -> None:
     with client({}) as test_client:
-        assert test_client.get("/health/live").json() == {"status": "ok"}
+        response = test_client.get("/health/live")
+
+    assert response.json() == {"status": "ok"}
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["Permissions-Policy"] == "camera=(), microphone=(), geolocation=()"
 
 
 def test_readiness_reports_dependencies() -> None:

@@ -50,6 +50,8 @@ Every increment follows: define acceptance criteria → implement smallest verti
 
 ## Milestone 4 — production hardening
 
+**Status:** in progress. The first hardening slice adds an atomic Redis fixed-window limit to analysis creation, fails closed if the limiter is unavailable, rejects oversized mutation requests, and adds baseline browser security headers. Authentication remains intentionally deferred until the user and identity-provider model is selected.
+
 - Authentication and per-user API throttling.
 - Monitoring, error tracking, backups, migrations, retention policy, load testing.
 - GitHub App OAuth and opt-in private-repository access only if justified.
