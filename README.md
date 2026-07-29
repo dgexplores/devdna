@@ -72,3 +72,11 @@ Submitting the same username and target role while an analysis is queued or runn
 If repository collection fails after the public profile succeeds, the analysis returns `partial` instead of discarding valid data. Its snapshot contains the profile and any repositories collected before the failure, while `error_message` explains what remains incomplete.
 
 A completed or partial response also includes `evidence_snapshot`. Evidence version `python-backend-evidence-v1` derives only from saved repository file paths and normalized Python manifest dependencies. Every claim contains direct GitHub source links; commit counts and contribution streaks are not analyzer inputs. See [the evidence rules](docs/EVIDENCE_RULES.md).
+
+The worker converts that evidence into `report_snapshot`, containing verified strengths, unverified rubric requirements, and prioritized actions. Retrieve the typed report at:
+
+```bash
+curl http://localhost:8000/v1/analyses/ANALYSIS_ID/report
+```
+
+Open the responsive evidence report at `http://localhost:8000/reports/ANALYSIS_ID`. Reports show transparent requirement coverage rather than a universal developer score. See [the report contract](docs/REPORT_CONTRACT.md).

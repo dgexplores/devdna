@@ -40,6 +40,8 @@ Every increment follows: define acceptance criteria → implement smallest verti
 
 ## Milestone 3 — explainable report
 
+**Status:** completed on 30 July 2026. The worker deterministically maps versioned evidence to rubric strengths, gaps, transparent requirement coverage, and prioritized actions. Reports are persisted, exposed through a typed API, and rendered as a responsive evidence-spine page. Partial analyses explicitly distinguish unverified data from absent evidence.
+
 - Role alignment, strengths, gaps, and prioritised actions.
 - API report schema and a minimal web report page.
 - Optional LLM summary constrained to evidence JSON.

@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from redis import Redis as SyncRedis
 from redis.asyncio import Redis
 from rq import Queue
@@ -14,6 +15,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from devdna.analyses import router as analyses_router
 from devdna.config import Settings, get_settings
 from devdna.logging import configure_logging
+from devdna.web import asset_directory
+from devdna.web import router as web_router
 
 ReadinessCheck = Callable[[], Awaitable[dict[str, str]]]
 logger = logging.getLogger(__name__)
@@ -58,6 +61,11 @@ def create_app(
 
     app = FastAPI(title="DevDNA API", version="0.1.0", lifespan=lifespan)
     app.include_router(analyses_router)
+    assets = asset_directory()
+    if not assets.is_dir():
+        raise RuntimeError("Web assets are missing")
+    app.mount("/assets", StaticFiles(directory=assets), name="assets")
+    app.include_router(web_router)
 
     @app.get("/health/live", tags=["health"])
     async def liveness() -> dict[str, str]:

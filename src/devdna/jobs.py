@@ -17,6 +17,7 @@ from devdna.github import (
     ResponseCache,
 )
 from devdna.models import AnalysisRun
+from devdna.reports import generate_report
 from devdna.schemas import GitHubSnapshot
 
 logger = logging.getLogger(__name__)
@@ -43,9 +44,15 @@ async def collect_profile(
         except GitHubPartialResult as error:
             analysis.status = "partial"
             analysis.profile_snapshot = error.snapshot.model_dump(mode="json")
-            analysis.evidence_snapshot = analyze_evidence(
+            evidence = analyze_evidence(
                 error.snapshot,
                 analysis.target_role,
+            )
+            analysis.evidence_snapshot = evidence.model_dump(mode="json")
+            analysis.report_snapshot = generate_report(
+                evidence,
+                "partial",
+                error.warning,
             ).model_dump(mode="json")
             analysis.error_message = error.warning
         except GitHubUserNotFound:
@@ -70,9 +77,14 @@ async def collect_profile(
         else:
             analysis.status = "completed"
             analysis.profile_snapshot = snapshot.model_dump(mode="json")
-            analysis.evidence_snapshot = analyze_evidence(
+            evidence = analyze_evidence(
                 snapshot,
                 analysis.target_role,
+            )
+            analysis.evidence_snapshot = evidence.model_dump(mode="json")
+            analysis.report_snapshot = generate_report(
+                evidence,
+                "completed",
             ).model_dump(mode="json")
         await session.commit()
 

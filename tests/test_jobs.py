@@ -92,6 +92,9 @@ def test_collect_profile_completes_analysis(tmp_path: Path) -> None:
             assert result.evidence_snapshot is not None
             assert result.evidence_snapshot["analyzer_version"] == ("python-backend-evidence-v1")
             assert result.evidence_snapshot["items"][0]["key"] == "python.project"
+            assert result.report_snapshot is not None
+            assert result.report_snapshot["report_version"] == "python-backend-report-v1"
+            assert result.report_snapshot["requirements_met"] == 2
         await engine.dispose()
 
     asyncio.run(scenario())
@@ -177,6 +180,11 @@ def test_collect_profile_saves_partial_snapshot(tmp_path: Path) -> None:
             assert result.status == "partial"
             assert result.profile_snapshot is not None
             assert result.profile_snapshot["profile"]["login"] == "octocat"
+            assert result.report_snapshot is not None
+            assert result.report_snapshot["collection_status"] == "partial"
+            assert result.report_snapshot["warning"] == (
+                "Repository collection stopped by GitHub rate limit; retry after 123456"
+            )
             assert result.error_message == (
                 "Repository collection stopped by GitHub rate limit; retry after 123456"
             )

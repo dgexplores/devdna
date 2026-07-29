@@ -27,6 +27,7 @@ class AnalysisResponse(BaseModel):
     status: AnalysisStatus
     profile_snapshot: dict[str, Any] | None
     evidence_snapshot: dict[str, Any] | None
+    report_snapshot: dict[str, Any] | None
     error_message: str | None
     created_at: datetime
     updated_at: datetime
@@ -110,3 +111,41 @@ class EvidenceSnapshot(BaseModel):
     rubric_version: str
     repositories_analyzed: int
     items: list[EvidenceItem] = Field(default_factory=list)
+
+
+class ReportStrength(BaseModel):
+    requirement: str
+    title: str
+    summary: str
+    repositories: list[str]
+    sources: list[EvidenceSource]
+
+
+class ReportGap(BaseModel):
+    requirement: str
+    title: str
+    explanation: str
+
+
+class ReportAction(BaseModel):
+    priority: int
+    requirement: str
+    title: str
+    rationale: str
+    evidence_needed: list[str]
+
+
+class ReportSnapshot(BaseModel):
+    schema_version: str
+    report_version: str
+    analyzer_version: str
+    rubric_version: str
+    target_role: str
+    collection_status: Literal["completed", "partial"]
+    warning: str | None = None
+    alignment_label: str
+    requirements_met: int
+    requirements_total: int
+    strengths: list[ReportStrength] = Field(default_factory=list)
+    gaps: list[ReportGap] = Field(default_factory=list)
+    actions: list[ReportAction] = Field(default_factory=list)

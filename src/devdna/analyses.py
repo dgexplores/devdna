@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from devdna.database import get_session
 from devdna.jobs import collect_profile_job
 from devdna.models import AnalysisRun
-from devdna.schemas import AnalysisCreate, AnalysisResponse
+from devdna.schemas import AnalysisCreate, AnalysisResponse, ReportSnapshot
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/analyses", tags=["analyses"])
@@ -99,3 +99,19 @@ async def get_analysis(
     if analysis is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
     return analysis
+
+
+@router.get("/{analysis_id}/report", response_model=ReportSnapshot)
+async def get_analysis_report(
+    analysis_id: str,
+    session: SessionDependency,
+) -> ReportSnapshot:
+    analysis = await session.get(AnalysisRun, analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.report_snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Report is not ready",
+        )
+    return ReportSnapshot.model_validate(analysis.report_snapshot)

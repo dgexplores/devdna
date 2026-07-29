@@ -9,6 +9,8 @@ from devdna.config import Settings
 from devdna.database import Base
 from devdna.main import create_app
 from devdna.models import AnalysisRun
+from devdna.reports import generate_report
+from devdna.schemas import EvidenceSnapshot
 
 
 class FakeQueue:
@@ -58,6 +60,8 @@ def test_create_and_get_analysis(tmp_path: Path) -> None:
             },
         )
         fetched = client.get(f"/v1/analyses/{created.json()['id']}")
+        pending_report = client.get(f"/v1/analyses/{created.json()['id']}/report")
+        pending_page = client.get(f"/reports/{created.json()['id']}")
     finally:
         client.__exit__(None, None, None)
 
@@ -66,6 +70,10 @@ def test_create_and_get_analysis(tmp_path: Path) -> None:
     assert created.json()["status"] == "queued"
     assert duplicate.json()["id"] == created.json()["id"]
     assert fetched.status_code == 200
+    assert pending_report.status_code == 409
+    assert pending_report.json()["detail"] == "Report is not ready"
+    assert pending_page.status_code == 202
+    assert "Reading octocat’s repositories" in pending_page.text
     assert len(queue.jobs) == 1
     assert queue.jobs[0][1]["job_timeout"] == 300
     assert queue.jobs[0][1]["retry"].max == 2
@@ -133,12 +141,19 @@ def test_get_analysis_exposes_partial_result(tmp_path: Path) -> None:
                     "repositories_analyzed": 0,
                     "items": [],
                 }
+                analysis.report_snapshot = generate_report(
+                    EvidenceSnapshot.model_validate(analysis.evidence_snapshot),
+                    "partial",
+                    "Repository collection failed",
+                ).model_dump(mode="json")
                 analysis.error_message = "Repository collection failed"
                 await session.commit()
             await engine.dispose()
 
         asyncio.run(mark_partial())
         response = client.get(f"/v1/analyses/{analysis_id}")
+        report_response = client.get(f"/v1/analyses/{analysis_id}/report")
+        report_page = client.get(f"/reports/{analysis_id}")
     finally:
         client.__exit__(None, None, None)
 
@@ -149,3 +164,8 @@ def test_get_analysis_exposes_partial_result(tmp_path: Path) -> None:
         "python-backend-evidence-v1"
     )
     assert response.json()["error_message"] == "Repository collection failed"
+    assert report_response.status_code == 200
+    assert report_response.json()["collection_status"] == "partial"
+    assert report_page.status_code == 200
+    assert "The evidence spine" in report_page.text
+    assert "Partial inspection" in report_page.text
