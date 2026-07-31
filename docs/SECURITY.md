@@ -6,6 +6,12 @@ DevDNA reads public GitHub data only. It does not accept CVs, recruitment lists,
 
 `POST /v1/analyses` requires a bearer API key whenever `DEVDNA_API_KEYS` is configured; staging and production refuse to start without that configuration. Read-only reports remain public because they contain public GitHub evidence. Each key uses `client=secret` configuration and `Authorization: Bearer client.secret` at the API boundary. Secrets must be at least 24 characters, live only in the deployment secret store, and be rotated by adding a replacement before removing the old entry.
 
+Analysis history is owner-scoped even though the underlying GitHub evidence is public. The web app
+exchanges a valid access key for a signed, time-limited, HttpOnly, SameSite cookie. Production
+requires a separate `DEVDNA_WEB_SESSION_SECRET`; it must not reuse an API key or GitHub token.
+The cookie is marked Secure outside development and test environments. API history authenticates
+every request and joins through the ownership table rather than trusting a caller-supplied owner.
+
 Analysis creation is throttled per authenticated client. Missing or invalid credentials, and development without configured keys, are throttled by the direct peer address. DevDNA deliberately ignores forwarded client headers until the deployment has an explicit trusted-proxy allowlist.
 
 ## Application controls

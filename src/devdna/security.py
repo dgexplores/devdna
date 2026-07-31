@@ -72,6 +72,26 @@ async def authorize_analysis_creation(
     await enforce_analysis_creation_access(request, response, header)
 
 
+async def authenticate_api_client(
+    request: Request,
+    authorization: BearerCredential,
+) -> str:
+    api_credentials: dict[str, bytes] = request.app.state.api_credentials
+    header = (
+        f"{authorization.scheme} {authorization.credentials}" if authorization is not None else None
+    )
+    client_id = authenticate_bearer(header, api_credentials)
+    if api_credentials and client_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Valid bearer API key required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    owner_id = client_id or "public"
+    request.state.api_client_id = client_id
+    return owner_id
+
+
 async def enforce_analysis_creation_access(
     request: Request,
     response: Response,

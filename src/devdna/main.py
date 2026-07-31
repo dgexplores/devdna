@@ -63,8 +63,17 @@ def create_app(
     settings = settings or get_settings()
     configure_logging(settings.log_level)
     api_credentials = parse_api_keys(settings.api_keys)
+    web_session_secret = (
+        settings.web_session_secret.get_secret_value().strip()
+        if settings.web_session_secret
+        else ""
+    )
     if settings.environment in {"staging", "production"} and not api_credentials:
         raise ValueError("DEVDNA_API_KEYS is required for the API in staging and production")
+    if settings.environment in {"staging", "production"} and not web_session_secret:
+        raise ValueError(
+            "DEVDNA_WEB_SESSION_SECRET is required for the web app in staging and production"
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -83,6 +92,9 @@ def create_app(
     app.state.metrics = RequestMetrics()
     app.state.settings = settings
     app.state.api_credentials = api_credentials
+    app.state.web_session_secret = (
+        web_session_secret or "devdna-local-session-secret-not-for-production"
+    )
 
     @app.middleware("http")
     async def harden_requests(

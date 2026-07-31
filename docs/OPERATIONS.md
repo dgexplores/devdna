@@ -2,7 +2,9 @@
 
 ## Configuration and authentication
 
-Copy `.env.example` to `.env` for local overrides. Staging and production require `DEVDNA_API_KEYS`. Generate high-entropy secrets with:
+Copy `.env.example` to `.env` for local overrides. Staging and production require
+`DEVDNA_API_KEYS` and an independent `DEVDNA_WEB_SESSION_SECRET`. Generate high-entropy secrets
+with:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(32))"

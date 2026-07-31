@@ -91,6 +91,17 @@ verified developer claims or reorder foundational role gaps.
 deterministic, every project specifies reviewable evidence, and every market signal is dated and
 source-linked.
 
+## Milestone 8 — ownership and history
+
+**Status:** completed on 31 July 2026. Analysis work remains globally deduplicated for public
+GitHub data, while an additive ownership table records which authenticated client requested each
+analysis. The bounded history API enforces client isolation. The web form exchanges a valid access
+key for a signed, time-limited, HttpOnly session cookie and exposes a responsive private history
+page; production requires an independent session-signing secret.
+
+**Done when:** two API clients cannot list each other's requests, session tampering and expiry are
+rejected, sign-out removes the cookie, and the migration preserves all existing analysis rows.
+
 ## Test strategy
 
 - Unit tests: evidence rules and rubric matching.

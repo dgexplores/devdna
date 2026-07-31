@@ -170,6 +170,36 @@ def test_duplicate_request_recovers_missing_queue_job(tmp_path: Path) -> None:
     assert queue.jobs[0][1]["job_id"] == created.json()["id"]
 
 
+def test_analysis_history_lists_only_authenticated_owner_requests(tmp_path: Path) -> None:
+    client = create_test_client(
+        tmp_path / "history.db",
+        FakeQueue(),
+        api_keys=("developer=correct-horse-battery-staple,recruiter=another-long-secret-value"),
+    )
+    developer_headers = {"Authorization": "Bearer developer.correct-horse-battery-staple"}
+    recruiter_headers = {"Authorization": "Bearer recruiter.another-long-secret-value"}
+    try:
+        created = client.post(
+            "/v1/analyses",
+            json={
+                "github_username": "octocat",
+                "target_role": "python_backend_developer",
+            },
+            headers=developer_headers,
+        )
+        developer_history = client.get("/v1/analyses", headers=developer_headers)
+        recruiter_history = client.get("/v1/analyses", headers=recruiter_headers)
+        missing_auth = client.get("/v1/analyses")
+    finally:
+        client.__exit__(None, None, None)
+
+    assert developer_history.status_code == 200
+    assert [item["id"] for item in developer_history.json()] == [created.json()["id"]]
+    assert recruiter_history.status_code == 200
+    assert recruiter_history.json() == []
+    assert missing_auth.status_code == 401
+
+
 def test_web_form_returns_inline_validation_error(tmp_path: Path) -> None:
     client = create_test_client(tmp_path / "web-form-invalid.db", FakeQueue())
     try:
@@ -208,6 +238,8 @@ def test_web_form_requires_configured_access_key(tmp_path: Path) -> None:
             data={**payload, "access_key": "developer.correct-horse-battery-staple"},
             follow_redirects=False,
         )
+        history = client.get("/history")
+        logout = client.post("/session/logout", follow_redirects=False)
     finally:
         client.__exit__(None, None, None)
 
@@ -215,6 +247,11 @@ def test_web_form_requires_configured_access_key(tmp_path: Path) -> None:
     assert missing.status_code == 401
     assert "Valid bearer API key required" in missing.text
     assert allowed.status_code == 303
+    assert "HttpOnly" in allowed.headers["set-cookie"]
+    assert history.status_code == 200
+    assert "octocat" in history.text
+    assert logout.status_code == 303
+    assert "devdna_session=" in logout.headers["set-cookie"]
     assert len(queue.jobs) == 1
 
 

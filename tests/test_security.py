@@ -11,6 +11,16 @@ def test_production_requires_api_keys() -> None:
         create_app(Settings(environment="production"))
 
 
+def test_production_requires_web_session_secret() -> None:
+    with pytest.raises(ValueError, match="DEVDNA_WEB_SESSION_SECRET is required"):
+        create_app(
+            Settings(
+                environment="production",
+                api_keys=SecretStr("developer=correct-horse-battery-staple"),
+            )
+        )
+
+
 def test_analysis_authentication_is_declared_in_openapi() -> None:
     schema = create_app(Settings(environment="test")).openapi()
 

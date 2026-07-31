@@ -78,6 +78,12 @@ Analysis creation is limited to 10 requests per direct client IP per 60-second w
 
 Staging and production require `DEVDNA_API_KEYS` with comma-separated `client=secret` entries. Create analyses with `Authorization: Bearer client.secret`; limits then apply independently to each client. Every response carries a request ID, and `/metrics` exposes bounded Prometheus-format request counters and durations.
 
+Staging and production also require `DEVDNA_WEB_SESSION_SECRET`, an independent high-entropy
+secret used to sign the web app's eight-hour HttpOnly session cookie. Override the duration with
+`DEVDNA_WEB_SESSION_HOURS`. A valid web-form access key establishes the cookie; analysis history
+is then available at `/history`. The bounded `GET /v1/analyses` endpoint returns only requests
+owned by the authenticated API client.
+
 If repository collection fails after the public profile succeeds, the analysis returns `partial` instead of discarding valid data. Its snapshot contains the profile and any repositories collected before the failure, while `error_message` explains what remains incomplete.
 
 A completed or partial response also includes `evidence_snapshot`. Evidence version `python-backend-evidence-v1` derives only from saved repository file paths and normalized Python manifest dependencies. Every claim contains direct GitHub source links; commit counts and contribution streaks are not analyzer inputs. See [the evidence rules](docs/EVIDENCE_RULES.md).

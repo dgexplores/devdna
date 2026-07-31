@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, Index, String, Text, text
+from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from devdna.database import Base
@@ -40,4 +40,19 @@ class AnalysisRun(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
+    )
+
+
+class AnalysisRequest(Base):
+    __tablename__ = "analysis_requests"
+
+    owner_id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    analysis_id: Mapped[str] = mapped_column(
+        ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        index=True,
     )

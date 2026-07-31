@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     github_token: SecretStr | None = None
     github_timeout_seconds: float = Field(default=10, gt=0, le=60)
     api_keys: SecretStr | None = None
+    web_session_secret: SecretStr | None = None
+    web_session_hours: int = Field(default=8, ge=1, le=168)
     analysis_rate_limit: int = Field(default=10, ge=1, le=1000)
     analysis_rate_window_seconds: int = Field(default=60, ge=1, le=3600)
     max_request_bytes: int = Field(default=16_384, ge=1024, le=1_048_576)

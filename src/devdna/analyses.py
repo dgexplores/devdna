@@ -2,7 +2,7 @@ import logging
 from typing import Annotated, cast
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from rq import Queue, Retry
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from devdna.database import get_session
 from devdna.jobs import collect_profile_job
 from devdna.learning import generate_learning_plan
-from devdna.models import AnalysisRun
+from devdna.models import AnalysisRequest, AnalysisRun
 from devdna.readme import generate_profile_readme
 from devdna.schemas import (
     AnalysisCreate,
@@ -20,7 +20,7 @@ from devdna.schemas import (
     ReadmeDraft,
     ReportSnapshot,
 )
-from devdna.security import authorize_analysis_creation
+from devdna.security import authenticate_api_client, authorize_analysis_creation
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/analyses", tags=["analyses"])
@@ -32,6 +32,7 @@ def get_queue(request: Request) -> Queue:
 
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
 QueueDependency = Annotated[Queue, Depends(get_queue)]
+OwnerDependency = Annotated[str, Depends(authenticate_api_client)]
 
 
 async def find_active_analysis(
@@ -54,10 +55,12 @@ async def start_analysis(
     payload: AnalysisCreate,
     session: AsyncSession,
     queue: Queue,
+    owner_id: str,
 ) -> AnalysisRun:
     """Persist and enqueue one idempotent analysis request."""
     existing = await find_active_analysis(session, payload)
     if existing:
+        await record_analysis_request(session, owner_id, existing.id)
         try:
             queued_job = queue.fetch_job(existing.id)
         except Exception as error:
@@ -90,6 +93,7 @@ async def start_analysis(
             return existing
         raise
     await session.refresh(analysis)
+    await record_analysis_request(session, owner_id, analysis.id)
 
     try:
         enqueue_analysis(queue, analysis)
@@ -99,6 +103,30 @@ async def start_analysis(
         await session.commit()
         raise
     return analysis
+
+
+async def record_analysis_request(
+    session: AsyncSession,
+    owner_id: str,
+    analysis_id: str,
+) -> None:
+    await session.merge(AnalysisRequest(owner_id=owner_id, analysis_id=analysis_id))
+    await session.commit()
+
+
+async def analyses_for_owner(
+    session: AsyncSession,
+    owner_id: str,
+    limit: int,
+) -> list[AnalysisRun]:
+    result = await session.scalars(
+        select(AnalysisRun)
+        .join(AnalysisRequest, AnalysisRequest.analysis_id == AnalysisRun.id)
+        .where(AnalysisRequest.owner_id == owner_id)
+        .order_by(AnalysisRequest.requested_at.desc())
+        .limit(limit)
+    )
+    return list(result)
 
 
 def enqueue_analysis(queue: Queue, analysis: AnalysisRun) -> None:
@@ -128,10 +156,21 @@ def enqueue_analysis(queue: Queue, analysis: AnalysisRun) -> None:
 )
 async def create_analysis(
     payload: AnalysisCreate,
+    request: Request,
     session: SessionDependency,
     queue: QueueDependency,
 ) -> AnalysisRun:
-    return await start_analysis(payload, session, queue)
+    owner_id = request.state.api_client_id or "public"
+    return await start_analysis(payload, session, queue, owner_id)
+
+
+@router.get("", response_model=list[AnalysisResponse])
+async def list_analyses(
+    session: SessionDependency,
+    owner_id: OwnerDependency,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list[AnalysisRun]:
+    return await analyses_for_owner(session, owner_id, limit)
 
 
 @router.get("/{analysis_id}", response_model=AnalysisResponse)

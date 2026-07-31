@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from rq import Queue
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from devdna.analyses import start_analysis
+from devdna.analyses import analyses_for_owner, start_analysis
 from devdna.database import get_session
 from devdna.learning import generate_learning_plan
 from devdna.models import AnalysisRun
@@ -27,6 +27,7 @@ from devdna.schemas import (
     ReportStrength,
 )
 from devdna.security import enforce_analysis_creation_access
+from devdna.web_sessions import SESSION_COOKIE, create_web_session, verify_web_session
 
 router = APIRouter(tags=["web"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
@@ -86,7 +87,10 @@ def home_response(
 <main class="home-shell">
   <header class="home-nav">
     <div class="brand">DevDNA <span>Developer evidence</span></div>
-    <a class="button button-secondary button-compact" href="/docs">API docs</a>
+    <nav class="home-links" aria-label="Primary navigation">
+      <a href="/history">History</a>
+      <a href="/docs">API docs</a>
+    </nav>
   </header>
   <section class="home-hero">
     <div class="home-intro">
@@ -371,6 +375,61 @@ def render_learning_page(username: str, analysis_id: str, plan: LearningPlan) ->
     return page_shell(f"{username} | DevDNA learning plan", content)
 
 
+def render_history_page(analyses: list[AnalysisRun], authenticated: bool) -> str:
+    rows = "".join(
+        f"""
+<li class="history-row">
+  <a href="/reports/{escape(analysis.id, quote=True)}">
+    <div>
+      <strong>{escape(analysis.github_username)}</strong>
+      <span>Python backend developer</span>
+    </div>
+    <div class="history-meta">
+      <span class="status-label {escape(analysis.status, quote=True)}">
+        {escape(analysis.status)}
+      </span>
+      <time datetime="{analysis.created_at.isoformat()}">
+        {analysis.created_at.strftime("%d %b %Y")}
+      </time>
+    </div>
+  </a>
+</li>"""
+        for analysis in analyses
+    )
+    history_content = (
+        f'<ol class="history-list">{rows}</ol>'
+        if rows
+        else """
+<div class="history-empty">
+  <h2>No analyses yet</h2>
+  <p>Start with a public GitHub username. Finished reports will appear here.</p>
+  <a class="button button-primary" href="/">Analyze a profile</a>
+</div>"""
+    )
+    sign_out = (
+        """
+    <form method="post" action="/session/logout">
+      <button class="button button-secondary button-compact" type="submit">Sign out</button>
+    </form>"""
+        if authenticated
+        else '<a class="button button-secondary button-compact" href="/">New analysis</a>'
+    )
+    content = f"""
+<main class="history-shell">
+  <header class="home-nav">
+    <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>Analysis history</span></a>
+    {sign_out}
+  </header>
+  <section class="history-hero">
+    <p class="eyebrow">Saved requests</p>
+    <h1>Developer analysis history.</h1>
+    <p>Return to progress, reports, README drafts, and learning plans.</p>
+  </section>
+  <section class="history-content" aria-label="Analysis history">{history_content}</section>
+</main>"""
+    return page_shell("Analysis history | DevDNA", content)
+
+
 def render_report_page(
     username: str,
     analysis_id: str,
@@ -518,7 +577,13 @@ async def submit_analysis(request: Request, session: SessionDependency) -> Respo
         )
 
     try:
-        analysis = await start_analysis(payload, session, cast(Queue, request.app.state.queue))
+        owner_id = request.state.api_client_id or "public"
+        analysis = await start_analysis(
+            payload,
+            session,
+            cast(Queue, request.app.state.queue),
+            owner_id,
+        )
     except HTTPException as error:
         return home_response(
             access_required=bool(request.app.state.api_credentials),
@@ -534,7 +599,43 @@ async def submit_analysis(request: Request, session: SessionDependency) -> Respo
     )
     for name, value in rate_limit_headers(policy_response).items():
         redirect.headers[name] = value
+    client_id = request.state.api_client_id
+    if client_id:
+        max_age = request.app.state.settings.web_session_hours * 3600
+        redirect.set_cookie(
+            SESSION_COOKIE,
+            create_web_session(client_id, request.app.state.web_session_secret, max_age),
+            max_age=max_age,
+            httponly=True,
+            secure=request.app.state.settings.environment in {"staging", "production"},
+            samesite="lax",
+            path="/",
+        )
     return redirect
+
+
+@router.get("/history", response_class=HTMLResponse)
+async def history_page(request: Request, session: SessionDependency) -> HTMLResponse:
+    credentials_configured = bool(request.app.state.api_credentials)
+    owner_id = verify_web_session(
+        request.cookies.get(SESSION_COOKIE),
+        request.app.state.web_session_secret,
+    )
+    if credentials_configured and owner_id is None:
+        return home_response(
+            access_required=True,
+            error="Enter your access key and start an analysis to open private history.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+    history = await analyses_for_owner(session, owner_id or "public", 50)
+    return HTMLResponse(render_history_page(history, authenticated=owner_id is not None))
+
+
+@router.post("/session/logout", response_class=HTMLResponse)
+async def logout() -> RedirectResponse:
+    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
 
 
 @router.get("/reports/{analysis_id}", response_class=HTMLResponse)
