@@ -90,6 +90,12 @@ curl http://localhost:8000/v1/analyses/ANALYSIS_ID/report
 
 Open the responsive evidence report at `http://localhost:8000/reports/ANALYSIS_ID`. Reports show transparent requirement coverage rather than a universal developer score. See [the report contract](docs/REPORT_CONTRACT.md).
 
+Each completed report links to an evidence-constrained profile README workspace at
+`http://localhost:8000/reports/ANALYSIS_ID/readme`. The draft features only repositories and
+engineering practices verified by the saved report, labels improvement work as aspirational, and
+can be downloaded as `README.md`. Its typed JSON form is available at
+`/v1/analyses/ANALYSIS_ID/readme`; DevDNA never publishes the draft automatically.
+
 Production operations include a 90-day terminal-analysis retention command, verified PostgreSQL backup/restore scripts, migration checks in CI, dependency update automation, and a bounded read-path load smoke test. Exact commands and failure procedures are in [the operations runbook](docs/OPERATIONS.md).
 
 Stop local services without deleting PostgreSQL or Redis volumes:

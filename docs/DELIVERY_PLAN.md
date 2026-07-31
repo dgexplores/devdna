@@ -68,6 +68,17 @@ request safely restores the missing job instead of leaving the report queued for
 **Done when:** the form-to-report path passes focused tests and a real Docker run completes a
 public GitHub analysis through PostgreSQL, Redis, RQ, and the report renderer.
 
+## Milestone 6 — evidence-constrained README assistant
+
+**Status:** completed on 31 July 2026. Every finished analysis can now produce a deterministic
+GitHub profile README draft through the API, a responsive review workspace, and a Markdown
+download. Featured projects and engineering claims come only from saved report strengths and
+source links; missing capabilities appear only as clearly aspirational improvement work. The
+draft remains user-reviewed and is never published to GitHub automatically.
+
+**Done when:** drafts contain no unsupported engineering claims, preserve direct evidence links,
+handle profiles with no verified strengths, and download as a valid `README.md` response.
+
 ## Test strategy
 
 - Unit tests: evidence rules and rubric matching.

@@ -97,6 +97,7 @@ def test_create_and_get_analysis(tmp_path: Path) -> None:
         )
         fetched = client.get(f"/v1/analyses/{created.json()['id']}")
         pending_report = client.get(f"/v1/analyses/{created.json()['id']}/report")
+        pending_readme = client.get(f"/v1/analyses/{created.json()['id']}/readme")
         pending_page = client.get(f"/reports/{created.json()['id']}")
     finally:
         client.__exit__(None, None, None)
@@ -108,6 +109,8 @@ def test_create_and_get_analysis(tmp_path: Path) -> None:
     assert fetched.status_code == 200
     assert pending_report.status_code == 409
     assert pending_report.json()["detail"] == "Report is not ready"
+    assert pending_readme.status_code == 409
+    assert pending_readme.json()["detail"] == "README draft is not ready"
     assert pending_page.status_code == 202
     assert "Reading octocat’s work" in pending_page.text
     assert 'aria-busy="true"' in pending_page.text
@@ -411,7 +414,10 @@ def test_get_analysis_exposes_partial_result(tmp_path: Path) -> None:
         asyncio.run(mark_partial())
         response = client.get(f"/v1/analyses/{analysis_id}")
         report_response = client.get(f"/v1/analyses/{analysis_id}/report")
+        readme_response = client.get(f"/v1/analyses/{analysis_id}/readme")
         report_page = client.get(f"/reports/{analysis_id}")
+        readme_page = client.get(f"/reports/{analysis_id}/readme")
+        readme_download = client.get(f"/reports/{analysis_id}/readme.md")
     finally:
         client.__exit__(None, None, None)
 
@@ -424,6 +430,13 @@ def test_get_analysis_exposes_partial_result(tmp_path: Path) -> None:
     assert response.json()["error_message"] == "Repository collection failed"
     assert report_response.status_code == 200
     assert report_response.json()["collection_status"] == "partial"
+    assert readme_response.status_code == 200
+    assert readme_response.json()["github_username"] == "octocat"
     assert report_page.status_code == 200
     assert "The evidence spine" in report_page.text
     assert "Partial inspection" in report_page.text
+    assert readme_page.status_code == 200
+    assert "A stronger profile" in readme_page.text
+    assert readme_download.status_code == 200
+    assert readme_download.headers["content-type"].startswith("text/markdown")
+    assert 'filename="README.md"' in readme_download.headers["content-disposition"]

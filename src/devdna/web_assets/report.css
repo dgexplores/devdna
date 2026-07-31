@@ -164,6 +164,13 @@ h3 {
   gap: 1.5rem;
 }
 
+.topbar-actions,
+.readme-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
 .topbar {
   position: sticky;
   z-index: 10;
@@ -665,6 +672,100 @@ footer p {
   padding-bottom: 3rem;
 }
 
+.readme-shell {
+  width: min(1180px, 92vw);
+  margin: 0 auto;
+}
+
+.readme-hero {
+  display: grid;
+  min-height: 430px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.65fr);
+  gap: clamp(3rem, 8vw, 8rem);
+  align-items: end;
+  padding: 6rem 0 4rem;
+}
+
+.readme-hero h1 {
+  max-width: 820px;
+  font-size: clamp(3.2rem, 6vw, 6rem);
+}
+
+.readme-hero p:not(.eyebrow) {
+  max-width: 610px;
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.readme-actions {
+  justify-content: flex-end;
+}
+
+.readme-workspace {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.55fr) minmax(0, 1.45fr);
+  gap: clamp(2.5rem, 7vw, 6rem);
+  padding: 5rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.readme-guidance h2 {
+  font-size: clamp(2.2rem, 4vw, 3.4rem);
+}
+
+.readme-guidance > p {
+  max-width: 34ch;
+  color: var(--muted);
+}
+
+.readme-guidance h3 {
+  margin-top: 2.5rem;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.readme-repositories {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.readme-repositories a {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  color: var(--accent);
+  font-family: var(--data);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-underline-offset: 4px;
+}
+
+.markdown-draft {
+  width: 100%;
+  min-height: 680px;
+  resize: vertical;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-family: var(--data);
+  font-size: 0.78rem;
+  line-height: 1.75;
+  tab-size: 2;
+}
+
+.markdown-draft:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow);
+}
+
 .pending-shell {
   display: grid;
   width: min(920px, 90vw);
@@ -773,7 +874,8 @@ footer p {
 
 @media (max-width: 780px) {
   .report-shell,
-  .home-shell {
+  .home-shell,
+  .readme-shell {
     width: min(100% - 2rem, 1180px);
   }
 
@@ -787,13 +889,16 @@ footer p {
 
   .report-hero,
   .home-hero,
+  .readme-hero,
+  .readme-workspace,
   .evidence-section,
   .actions-section {
     grid-template-columns: 1fr;
   }
 
   .report-hero,
-  .home-hero {
+  .home-hero,
+  .readme-hero {
     gap: 2.5rem;
     min-height: auto;
     padding: 4.5rem 0 3.5rem;
@@ -835,6 +940,18 @@ footer p {
 
   footer {
     flex-direction: column;
+  }
+
+  .topbar-actions .button-secondary {
+    display: none;
+  }
+
+  .readme-actions {
+    justify-content: flex-start;
+  }
+
+  .markdown-draft {
+    min-height: 560px;
   }
 }
 

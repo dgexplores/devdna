@@ -5,7 +5,7 @@ from typing import Annotated, cast
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import ValidationError
 from rq import Queue
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,8 +13,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from devdna.analyses import start_analysis
 from devdna.database import get_session
 from devdna.models import AnalysisRun
+from devdna.readme import generate_profile_readme
 from devdna.rubrics import get_rubric
-from devdna.schemas import AnalysisCreate, ReportAction, ReportGap, ReportSnapshot, ReportStrength
+from devdna.schemas import (
+    AnalysisCreate,
+    ReadmeDraft,
+    ReportAction,
+    ReportGap,
+    ReportSnapshot,
+    ReportStrength,
+)
 from devdna.security import enforce_analysis_creation_access
 
 router = APIRouter(tags=["web"])
@@ -227,6 +235,60 @@ def render_action(action: ReportAction) -> str:
 </article>"""
 
 
+def render_readme_page(username: str, analysis_id: str, draft: ReadmeDraft) -> str:
+    repository_items = "".join(
+        f'<li><a href="{escape(repository.url, quote=True)}" target="_blank" '
+        f'rel="noopener noreferrer">{escape(repository.name)}</a></li>'
+        for repository in draft.repositories[:4]
+    )
+    repository_note = (
+        f'<ul class="readme-repositories">{repository_items}</ul>'
+        if repository_items
+        else '<p class="empty-note">No repository has verified role evidence yet.</p>'
+    )
+    content = f"""
+<header class="topbar">
+  <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>README studio</span></a>
+  <a class="button button-secondary button-compact"
+    href="/reports/{escape(analysis_id, quote=True)}">
+    Back to report
+  </a>
+</header>
+<main class="readme-shell">
+  <section class="readme-hero">
+    <div>
+      <p class="eyebrow">Evidence-constrained draft</p>
+      <h1>A stronger profile, without invented claims.</h1>
+      <p>Built from {escape(username)}’s verified project evidence and current improvement plan.</p>
+    </div>
+    <div class="readme-actions">
+      <a class="button button-primary" href="/reports/{escape(analysis_id, quote=True)}/readme.md">
+        Download Markdown
+      </a>
+      <a class="button button-secondary"
+        href="/v1/analyses/{escape(analysis_id, quote=True)}/readme">
+        Open JSON
+      </a>
+    </div>
+  </section>
+  <section class="readme-workspace" aria-labelledby="draft-title">
+    <div class="readme-guidance">
+      <h2 id="draft-title">Your draft</h2>
+      <p>Review the wording, add contact details, then place it in your profile repository.</p>
+      <h3>Featured evidence</h3>
+      {repository_note}
+    </div>
+    <textarea class="markdown-draft" readonly spellcheck="false"
+      aria-label="Generated profile README Markdown">{escape(draft.markdown)}</textarea>
+  </section>
+  <footer>
+    <p>Every technical claim comes from the saved DevDNA evidence report.</p>
+    <p>Review personal wording before publishing.</p>
+  </footer>
+</main>"""
+    return page_shell(f"{username} | DevDNA README draft", content)
+
+
 def render_report_page(
     username: str,
     analysis_id: str,
@@ -262,10 +324,12 @@ def render_report_page(
     content = f"""
 <header class="topbar">
   <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>Developer evidence</span></a>
-  <a class="button button-secondary button-compact"
-    href="/v1/analyses/{escape(analysis_id, quote=True)}/report">
-    Open JSON
-  </a>
+  <nav class="topbar-actions" aria-label="Report actions">
+    <a class="button button-primary button-compact"
+      href="/reports/{escape(analysis_id, quote=True)}/readme">README draft</a>
+    <a class="button button-secondary button-compact"
+      href="/v1/analyses/{escape(analysis_id, quote=True)}/report">Open JSON</a>
+  </nav>
 </header>
 <main class="report-shell">
   <section class="report-hero">
@@ -404,6 +468,40 @@ async def report_page(
         )
     report = ReportSnapshot.model_validate(analysis.report_snapshot)
     return HTMLResponse(render_report_page(analysis.github_username, analysis.id, report))
+
+
+@router.get("/reports/{analysis_id}/readme", response_class=HTMLResponse)
+async def readme_page(analysis_id: str, session: SessionDependency) -> HTMLResponse:
+    analysis = await session.get(AnalysisRun, analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.report_snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="README draft is not ready",
+        )
+    report = ReportSnapshot.model_validate(analysis.report_snapshot)
+    draft = generate_profile_readme(analysis.github_username, report)
+    return HTMLResponse(render_readme_page(analysis.github_username, analysis.id, draft))
+
+
+@router.get("/reports/{analysis_id}/readme.md", response_class=PlainTextResponse)
+async def download_readme(analysis_id: str, session: SessionDependency) -> PlainTextResponse:
+    analysis = await session.get(AnalysisRun, analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.report_snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="README draft is not ready",
+        )
+    report = ReportSnapshot.model_validate(analysis.report_snapshot)
+    draft = generate_profile_readme(analysis.github_username, report)
+    return PlainTextResponse(
+        draft.markdown,
+        media_type="text/markdown",
+        headers={"Content-Disposition": 'attachment; filename="README.md"'},
+    )
 
 
 def asset_directory() -> Path:

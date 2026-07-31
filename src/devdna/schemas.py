@@ -149,3 +149,18 @@ class ReportSnapshot(BaseModel):
     strengths: list[ReportStrength] = Field(default_factory=list)
     gaps: list[ReportGap] = Field(default_factory=list)
     actions: list[ReportAction] = Field(default_factory=list)
+
+
+class ReadmeRepository(BaseModel):
+    name: str
+    url: str
+    evidence: list[str]
+
+
+class ReadmeDraft(BaseModel):
+    schema_version: str
+    generator_version: str
+    github_username: str
+    repositories: list[ReadmeRepository] = Field(default_factory=list)
+    evidence_sources: list[EvidenceSource] = Field(default_factory=list)
+    markdown: str
