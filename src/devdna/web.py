@@ -12,11 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from devdna.analyses import start_analysis
 from devdna.database import get_session
+from devdna.learning import generate_learning_plan
 from devdna.models import AnalysisRun
 from devdna.readme import generate_profile_readme
 from devdna.rubrics import get_rubric
 from devdna.schemas import (
     AnalysisCreate,
+    LearningPlan,
+    LearningRecommendation,
     ReadmeDraft,
     ReportAction,
     ReportGap,
@@ -289,6 +292,85 @@ def render_readme_page(username: str, analysis_id: str, draft: ReadmeDraft) -> s
     return page_shell(f"{username} | DevDNA README draft", content)
 
 
+def render_learning_recommendation(item: LearningRecommendation) -> str:
+    outcomes = "".join(f"<li>{escape(outcome)}</li>" for outcome in item.learning_outcomes)
+    evidence = "".join(f"<li>{escape(entry)}</li>" for entry in item.evidence_to_publish)
+    source = (
+        f"""<a class="learning-source" href="{escape(item.source_url or "", quote=True)}"
+          target="_blank" rel="noopener noreferrer">
+          {escape(item.source_label or "Source")} | reviewed {escape(item.reviewed_on or "")}
+        </a>"""
+        if item.source_url
+        else ""
+    )
+    return f"""
+<article class="learning-item {escape(item.kind, quote=True)}">
+  <div class="learning-priority" aria-label="Priority {item.priority}">{item.priority}</div>
+  <div>
+    <p class="action-requirement">{escape(item.kind.replace("_", " "))}</p>
+    <h3>{escape(item.title)}</h3>
+    <p>{escape(item.rationale)}</p>
+    <h4>Learn</h4>
+    <ul>{outcomes}</ul>
+    <h4>Build</h4>
+    <p>{escape(item.project_brief)}</p>
+    <h4>Publish as evidence</h4>
+    <ul>{evidence}</ul>
+    {source}
+  </div>
+</article>"""
+
+
+def render_learning_page(username: str, analysis_id: str, plan: LearningPlan) -> str:
+    role_items = "".join(
+        render_learning_recommendation(item)
+        for item in plan.recommendations
+        if item.kind == "role_gap"
+    )
+    market_items = "".join(
+        render_learning_recommendation(item)
+        for item in plan.recommendations
+        if item.kind == "market_signal"
+    )
+    role_content = role_items or (
+        '<p class="empty-note">The current role rubric has direct evidence '
+        "for every requirement.</p>"
+    )
+    content = f"""
+<header class="topbar">
+  <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>Learning plan</span></a>
+  <a class="button button-secondary button-compact"
+    href="/reports/{escape(analysis_id, quote=True)}">Back to report</a>
+</header>
+<main class="learning-shell">
+  <section class="learning-hero">
+    <p class="eyebrow">Python backend developer</p>
+    <h1>Learn what your portfolio cannot prove yet.</h1>
+    <p>A practical sequence for {escape(username)}, grounded in role gaps and
+      dated market signals.</p>
+  </section>
+  <section class="learning-section" aria-labelledby="role-learning-title">
+    <div class="section-heading">
+      <h2 id="role-learning-title">Close the role gaps</h2>
+      <p>Complete these in order. Each project ends with reviewable GitHub evidence.</p>
+    </div>
+    <div class="learning-list">{role_content}</div>
+  </section>
+  <section class="market-section" aria-labelledby="market-title">
+    <div class="section-heading">
+      <h2 id="market-title">Explore what is growing</h2>
+      <p>Market signals are dated and sourced. They never change your verified skill evidence.</p>
+    </div>
+    <div class="learning-list">{market_items}</div>
+  </section>
+  <footer>
+    <p>Role gaps come from the saved evidence report.</p>
+    <p>Market signals require periodic review.</p>
+  </footer>
+</main>"""
+    return page_shell(f"{username} | DevDNA learning plan", content)
+
+
 def render_report_page(
     username: str,
     analysis_id: str,
@@ -324,12 +406,8 @@ def render_report_page(
     content = f"""
 <header class="topbar">
   <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>Developer evidence</span></a>
-  <nav class="topbar-actions" aria-label="Report actions">
-    <a class="button button-primary button-compact"
-      href="/reports/{escape(analysis_id, quote=True)}/readme">README draft</a>
-    <a class="button button-secondary button-compact"
-      href="/v1/analyses/{escape(analysis_id, quote=True)}/report">Open JSON</a>
-  </nav>
+  <a class="button button-secondary button-compact"
+    href="/v1/analyses/{escape(analysis_id, quote=True)}/report">Open JSON</a>
 </header>
 <main class="report-shell">
   <section class="report-hero">
@@ -353,6 +431,16 @@ def render_report_page(
     </div>
   </section>
   {warning}
+  <nav class="report-tools" aria-label="Developer tools">
+    <a href="/reports/{escape(analysis_id, quote=True)}/readme">
+      <strong>Profile README</strong>
+      <span>Create a source-backed Markdown draft</span>
+    </a>
+    <a href="/reports/{escape(analysis_id, quote=True)}/learning">
+      <strong>Learning plan</strong>
+      <span>Turn evidence gaps into portfolio work</span>
+    </a>
+  </nav>
   <section class="evidence-section" aria-labelledby="evidence-title">
     <div class="section-heading">
       <h2 id="evidence-title">The evidence spine</h2>
@@ -502,6 +590,21 @@ async def download_readme(analysis_id: str, session: SessionDependency) -> Plain
         media_type="text/markdown",
         headers={"Content-Disposition": 'attachment; filename="README.md"'},
     )
+
+
+@router.get("/reports/{analysis_id}/learning", response_class=HTMLResponse)
+async def learning_page(analysis_id: str, session: SessionDependency) -> HTMLResponse:
+    analysis = await session.get(AnalysisRun, analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.report_snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Learning plan is not ready",
+        )
+    report = ReportSnapshot.model_validate(analysis.report_snapshot)
+    plan = generate_learning_plan(report)
+    return HTMLResponse(render_learning_page(analysis.github_username, analysis.id, plan))
 
 
 def asset_directory() -> Path:

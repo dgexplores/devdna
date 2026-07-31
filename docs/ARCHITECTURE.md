@@ -70,3 +70,11 @@ The current release stores the immutable public GitHub collection in `profile_sn
 - Encrypt OAuth tokens at rest when OAuth is added.
 - Define retention/deletion controls before storing CVs or recruitment lists.
 - Recruitment features must not infer protected traits or make autonomous selection/rejection decisions.
+
+## Market-signal governance
+
+Role-gap recommendations are deterministic outputs of the versioned role rubric. Optional market
+signals live in a separate catalog with a primary source URL and explicit review date. They may
+suggest portfolio exploration but cannot create evidence, change role coverage, or influence a
+future hiring rank. Review or remove stale signals before their dated source no longer represents
+the current ecosystem.

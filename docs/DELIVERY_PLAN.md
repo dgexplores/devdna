@@ -79,6 +79,18 @@ draft remains user-reviewed and is never published to GitHub automatically.
 **Done when:** drafts contain no unsupported engineering claims, preserve direct evidence links,
 handle profiles with no verified strengths, and download as a valid `README.md` response.
 
+## Milestone 7 — role-aligned learning plan
+
+**Status:** completed on 31 July 2026. Finished reports now produce an ordered learning plan via
+API and responsive web page. Each missing role requirement maps to explicit learning outcomes, a
+bounded portfolio project, and the exact artifacts the developer should publish as evidence.
+Separately labeled market signals include a primary source and review date; they never become
+verified developer claims or reorder foundational role gaps.
+
+**Done when:** verified requirements are omitted from the gap curriculum, priorities remain
+deterministic, every project specifies reviewable evidence, and every market signal is dated and
+source-linked.
+
 ## Test strategy
 
 - Unit tests: evidence rules and rubric matching.

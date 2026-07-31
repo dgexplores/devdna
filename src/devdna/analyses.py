@@ -10,9 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from devdna.database import get_session
 from devdna.jobs import collect_profile_job
+from devdna.learning import generate_learning_plan
 from devdna.models import AnalysisRun
 from devdna.readme import generate_profile_readme
-from devdna.schemas import AnalysisCreate, AnalysisResponse, ReadmeDraft, ReportSnapshot
+from devdna.schemas import (
+    AnalysisCreate,
+    AnalysisResponse,
+    LearningPlan,
+    ReadmeDraft,
+    ReportSnapshot,
+)
 from devdna.security import authorize_analysis_creation
 
 logger = logging.getLogger(__name__)
@@ -169,3 +176,20 @@ async def get_analysis_readme(
         )
     report = ReportSnapshot.model_validate(analysis.report_snapshot)
     return generate_profile_readme(analysis.github_username, report)
+
+
+@router.get("/{analysis_id}/learning", response_model=LearningPlan)
+async def get_analysis_learning_plan(
+    analysis_id: str,
+    session: SessionDependency,
+) -> LearningPlan:
+    analysis = await session.get(AnalysisRun, analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.report_snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Learning plan is not ready",
+        )
+    report = ReportSnapshot.model_validate(analysis.report_snapshot)
+    return generate_learning_plan(report)

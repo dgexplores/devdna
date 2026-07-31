@@ -277,6 +277,36 @@ h3 {
   color: color-mix(in srgb, var(--warning) 76%, var(--ink));
 }
 
+.report-tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.report-tools a {
+  display: grid;
+  min-height: 112px;
+  align-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-decoration: none;
+  transition: border-color 180ms var(--ease-out), background-color 180ms var(--ease-out),
+    transform 180ms var(--ease-out);
+}
+
+.report-tools strong {
+  font-size: 1rem;
+}
+
+.report-tools span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .evidence-section,
 .actions-section {
   display: grid;
@@ -677,6 +707,101 @@ footer p {
   margin: 0 auto;
 }
 
+.learning-shell {
+  width: min(1180px, 92vw);
+  margin: 0 auto;
+}
+
+.learning-hero {
+  min-height: min(590px, calc(100dvh - 68px));
+  padding: clamp(6rem, 13vh, 9rem) 0 4rem;
+}
+
+.learning-hero h1 {
+  max-width: 880px;
+  font-size: clamp(3.5rem, 7vw, 6.6rem);
+}
+
+.learning-hero > p:last-child {
+  max-width: 620px;
+  color: var(--muted);
+  font-size: 1.08rem;
+}
+
+.learning-section,
+.market-section {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.62fr) minmax(0, 1.38fr);
+  gap: clamp(3rem, 8vw, 7rem);
+  padding: clamp(4rem, 8vw, 7rem) 0;
+  border-top: 1px solid var(--line);
+}
+
+.learning-list {
+  display: grid;
+  gap: 1.2rem;
+}
+
+.learning-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 1.2rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.learning-item.market_signal {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 38%, var(--surface));
+}
+
+.learning-priority {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-family: var(--data);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.learning-item h4 {
+  margin: 1.4rem 0 0.55rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.learning-item p,
+.learning-item li {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.learning-item ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.learning-source {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  margin-top: 1.2rem;
+  color: var(--accent);
+  font-family: var(--data);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-underline-offset: 4px;
+}
+
 .readme-hero {
   display: grid;
   min-height: 430px;
@@ -830,6 +955,12 @@ footer p {
     background: var(--accent-soft);
     transform: translateX(3px);
   }
+
+  .report-tools a:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    transform: translateY(-2px);
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -875,7 +1006,8 @@ footer p {
 @media (max-width: 780px) {
   .report-shell,
   .home-shell,
-  .readme-shell {
+  .readme-shell,
+  .learning-shell {
     width: min(100% - 2rem, 1180px);
   }
 
@@ -891,6 +1023,8 @@ footer p {
   .home-hero,
   .readme-hero,
   .readme-workspace,
+  .learning-section,
+  .market-section,
   .evidence-section,
   .actions-section {
     grid-template-columns: 1fr;
@@ -940,6 +1074,20 @@ footer p {
 
   footer {
     flex-direction: column;
+  }
+
+  .report-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .learning-hero {
+    min-height: auto;
+    padding: 4.5rem 0 3.5rem;
+  }
+
+  .learning-item {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 0.9rem;
   }
 
   .topbar-actions .button-secondary {

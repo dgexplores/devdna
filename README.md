@@ -96,6 +96,12 @@ engineering practices verified by the saved report, labels improvement work as a
 can be downloaded as `README.md`. Its typed JSON form is available at
 `/v1/analyses/ANALYSIS_ID/readme`; DevDNA never publishes the draft automatically.
 
+The report also links to `http://localhost:8000/reports/ANALYSIS_ID/learning`, which turns each
+unverified role requirement into learning outcomes, a portfolio project, and an evidence checklist.
+Its final section contains separately labeled, dated market signals with primary sources. These
+signals do not affect the evidence report. The typed plan is available at
+`/v1/analyses/ANALYSIS_ID/learning`.
+
 Production operations include a 90-day terminal-analysis retention command, verified PostgreSQL backup/restore scripts, migration checks in CI, dependency update automation, and a bounded read-path load smoke test. Exact commands and failure procedures are in [the operations runbook](docs/OPERATIONS.md).
 
 Stop local services without deleting PostgreSQL or Redis volumes:

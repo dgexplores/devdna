@@ -164,3 +164,23 @@ class ReadmeDraft(BaseModel):
     repositories: list[ReadmeRepository] = Field(default_factory=list)
     evidence_sources: list[EvidenceSource] = Field(default_factory=list)
     markdown: str
+
+
+class LearningRecommendation(BaseModel):
+    priority: int
+    kind: Literal["role_gap", "market_signal"]
+    title: str
+    rationale: str
+    learning_outcomes: list[str]
+    project_brief: str
+    evidence_to_publish: list[str]
+    source_label: str | None = None
+    source_url: str | None = None
+    reviewed_on: str | None = None
+
+
+class LearningPlan(BaseModel):
+    schema_version: str
+    generator_version: str
+    target_role: str
+    recommendations: list[LearningRecommendation]
