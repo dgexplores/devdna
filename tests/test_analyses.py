@@ -1,7 +1,9 @@
 import asyncio
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+from docx import Document
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -11,7 +13,7 @@ from devdna.database import Base
 from devdna.main import create_app
 from devdna.models import AnalysisRun
 from devdna.reports import generate_report
-from devdna.schemas import EvidenceSnapshot
+from devdna.schemas import EvidenceItem, EvidenceSnapshot, EvidenceSource
 
 
 class FakeQueue:
@@ -52,6 +54,7 @@ def create_test_client(
     recruiter_upload_max_bytes: int = 1_048_576,
     recruiter_batch_max_candidates: int = 50,
     recruiter_batch_rate_limit: int = 3,
+    cv_upload_max_bytes: int = 2_097_152,
     rate_limiter: FakeRateLimiter | None = None,
     api_keys: str | None = None,
 ) -> TestClient:
@@ -73,6 +76,7 @@ def create_test_client(
             recruiter_upload_max_bytes=recruiter_upload_max_bytes,
             recruiter_batch_max_candidates=recruiter_batch_max_candidates,
             recruiter_batch_rate_limit=recruiter_batch_rate_limit,
+            cv_upload_max_bytes=cv_upload_max_bytes,
             api_keys=SecretStr(api_keys) if api_keys else None,
         )
     )
@@ -81,6 +85,133 @@ def create_test_client(
     app.state.queue = queue
     app.state.rate_limiter = rate_limiter or FakeRateLimiter()
     return client
+
+
+def create_docx(text: str) -> bytes:
+    document = Document()
+    document.add_paragraph(text)
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
+
+
+def save_completed_snapshots(
+    database_path: Path,
+    analysis_id: str,
+    evidence: EvidenceSnapshot,
+) -> None:
+    async def update() -> None:
+        engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with session_factory() as session:
+            analysis = await session.get(AnalysisRun, analysis_id)
+            assert analysis is not None
+            report = generate_report(evidence, "completed")
+            analysis.status = "completed"
+            analysis.evidence_snapshot = evidence.model_dump(mode="json")
+            analysis.report_snapshot = report.model_dump(mode="json")
+            await session.commit()
+        await engine.dispose()
+
+    asyncio.run(update())
+
+
+def cv_evidence() -> EvidenceSnapshot:
+    return EvidenceSnapshot(
+        schema_version="1",
+        analyzer_version="test",
+        target_role="python_backend_developer",
+        rubric_version="python_backend_developer:v1",
+        repositories_analyzed=1,
+        items=[
+            EvidenceItem(
+                key="python.project",
+                category="language",
+                claim="Python project files are present.",
+                repository="octocat/backend",
+                sources=[
+                    EvidenceSource(
+                        repository="octocat/backend",
+                        path="pyproject.toml",
+                        url="https://github.com/octocat/backend/blob/main/pyproject.toml",
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def test_cv_alignment_is_owner_scoped_and_does_not_promote_cv_only_claims(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "cv-owner.db"
+    client = create_test_client(
+        database_path,
+        FakeQueue(),
+        api_keys=("developer=correct-horse-battery-staple,recruiter=another-long-secret-value"),
+    )
+    developer_headers = {"Authorization": "Bearer developer.correct-horse-battery-staple"}
+    recruiter_headers = {"Authorization": "Bearer recruiter.another-long-secret-value"}
+    try:
+        created = client.post(
+            "/v1/analyses",
+            json={
+                "github_username": "octocat",
+                "target_role": "python_backend_developer",
+            },
+            headers=developer_headers,
+        )
+        analysis_id = created.json()["id"]
+        save_completed_snapshots(database_path, analysis_id, cv_evidence())
+        cv_file = ("resume.docx", create_docx("Python FastAPI private-marker"))
+        aligned = client.post(
+            f"/v1/analyses/{analysis_id}/cv-alignment",
+            headers=developer_headers,
+            files={"file": cv_file},
+        )
+        hidden = client.post(
+            f"/v1/analyses/{analysis_id}/cv-alignment",
+            headers=recruiter_headers,
+            files={"file": cv_file},
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert aligned.status_code == 200
+    skills = {item["skill"]: item for item in aligned.json()["skills"]}
+    assert skills["Python"]["status"] == "verified"
+    assert skills["FastAPI"]["status"] == "self_reported_unverified"
+    assert aligned.json()["suggested_summary"] == "Public GitHub work verifies Python."
+    assert hidden.status_code == 404
+
+
+def test_readme_studio_offers_private_cv_alignment_workflow(tmp_path: Path) -> None:
+    database_path = tmp_path / "cv-web.db"
+    client = create_test_client(database_path, FakeQueue())
+    try:
+        created = client.post(
+            "/v1/analyses",
+            json={
+                "github_username": "octocat",
+                "target_role": "python_backend_developer",
+            },
+        )
+        analysis_id = created.json()["id"]
+        save_completed_snapshots(database_path, analysis_id, cv_evidence())
+        studio = client.get(f"/reports/{analysis_id}/readme")
+        result = client.post(
+            f"/reports/{analysis_id}/cv-align",
+            files={"file": ("resume.docx", create_docx("Python Docker"))},
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert studio.status_code == 200
+    assert 'enctype="multipart/form-data"' in studio.text
+    assert "Your file is processed in memory and is not saved." in studio.text
+    assert result.status_code == 200
+    assert "Verified in GitHub" in result.text
+    assert "CV only — not verified" in result.text
 
 
 def test_create_and_get_analysis(tmp_path: Path) -> None:

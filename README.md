@@ -102,6 +102,11 @@ engineering practices verified by the saved report, labels improvement work as a
 can be downloaded as `README.md`. Its typed JSON form is available at
 `/v1/analyses/ANALYSIS_ID/readme`; DevDNA never publishes the draft automatically.
 
+The README workspace can privately compare a PDF or DOCX CV with the saved GitHub evidence.
+Verified and CV-only skills are shown separately; CV-only statements never become verified claims.
+Uploaded bytes and extracted text are processed in memory and are not stored. Authenticated API
+clients can use `POST /v1/analyses/ANALYSIS_ID/cv-alignment` with a multipart `file` field.
+
 The report also links to `http://localhost:8000/reports/ANALYSIS_ID/learning`, which turns each
 unverified role requirement into learning outcomes, a portfolio project, and an evidence checklist.
 Its final section contains separately labeled, dated market signals with primary sources. These

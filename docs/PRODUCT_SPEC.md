@@ -18,12 +18,16 @@ DevDNA converts public GitHub project evidence into an understandable developer 
 
 Supported initial target role: `python_backend_developer`. Add roles only when their rubric and evidence rules are defined.
 
-## Non-goals for release 1
+## Original release 1 non-goals
+
+These constraints defined the first delivery. CV evidence alignment and recruiter batch comparison
+were subsequently added as bounded, owner-scoped milestones; persistent CV storage and autonomous
+hiring decisions remain out of scope.
 
 - Private repository analysis.
-- CV upload/parsing.
+- Persistent CV upload storage or treating CV statements as verified evidence.
 - Automated profile README publishing to GitHub.
-- Recruiter upload, ranking, or hiring recommendations.
+- Autonomous candidate acceptance, rejection, or protected-trait inference.
 - A universal developer score.
 
 ## Evidence policy

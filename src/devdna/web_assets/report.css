@@ -1134,6 +1134,125 @@ footer p {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow);
 }
 
+.cv-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+  gap: clamp(2.5rem, 7vw, 6rem);
+  align-items: center;
+  padding: 5rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.cv-panel h2 {
+  max-width: 720px;
+}
+
+.cv-panel > div > p:last-child,
+.cv-result-hero > p:last-child,
+.cv-group > p,
+.cv-guidance li {
+  color: var(--muted);
+}
+
+.cv-form {
+  display: grid;
+  gap: 1.25rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.cv-form input[type="file"] {
+  padding: 0.65rem;
+  cursor: pointer;
+}
+
+.cv-alignment-shell {
+  width: min(1100px, 92vw);
+  margin: 0 auto;
+}
+
+.cv-result-hero {
+  padding: clamp(5rem, 12vh, 8rem) 0 4rem;
+}
+
+.cv-result-hero h1 {
+  max-width: 920px;
+  font-size: clamp(3.1rem, 6vw, 6rem);
+}
+
+.cv-result-hero > p:last-child {
+  max-width: 700px;
+  font-size: 1.05rem;
+}
+
+.cv-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 0 0 4rem;
+}
+
+.cv-group,
+.cv-guidance {
+  padding: clamp(1.4rem, 3vw, 2.2rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.cv-group.verified {
+  border-top: 4px solid var(--positive);
+}
+
+.cv-group.unverified {
+  border-top: 4px solid var(--warning);
+}
+
+.cv-group h2,
+.cv-guidance h2 {
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+}
+
+.cv-skill-list,
+.cv-source-list {
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cv-skill {
+  padding: 1rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.cv-source-list {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.cv-source-list a {
+  color: var(--accent);
+  font-family: var(--data);
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.cv-guidance {
+  margin-bottom: 5rem;
+  background: var(--surface-muted);
+}
+
+.cv-guidance ul {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 0;
+  padding-left: 1.2rem;
+}
+
 .pending-shell {
   display: grid;
   width: min(920px, 90vw);
@@ -1260,7 +1379,8 @@ footer p {
   .home-shell,
   .readme-shell,
   .learning-shell,
-  .history-shell {
+  .history-shell,
+  .cv-alignment-shell {
     width: min(100% - 2rem, 1180px);
   }
 
@@ -1282,6 +1402,8 @@ footer p {
   .readme-hero,
   .recruiter-hero,
   .readme-workspace,
+  .cv-panel,
+  .cv-groups,
   .learning-section,
   .market-section,
   .evidence-section,

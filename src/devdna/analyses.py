@@ -2,12 +2,13 @@ import logging
 from typing import Annotated, cast
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from rq import Queue, Retry
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from devdna.cv import CvFileError, align_cv_to_evidence, extract_cv_text
 from devdna.database import get_session
 from devdna.jobs import collect_profile_job
 from devdna.learning import generate_learning_plan
@@ -16,6 +17,8 @@ from devdna.readme import generate_profile_readme
 from devdna.schemas import (
     AnalysisCreate,
     AnalysisResponse,
+    CvAlignment,
+    EvidenceSnapshot,
     LearningPlan,
     ReadmeDraft,
     ReportSnapshot,
@@ -129,6 +132,15 @@ async def analyses_for_owner(
     return list(result)
 
 
+async def owner_requested_analysis(
+    session: AsyncSession,
+    owner_id: str,
+    analysis_id: str,
+) -> bool:
+    request_record = await session.get(AnalysisRequest, (owner_id, analysis_id))
+    return request_record is not None
+
+
 def enqueue_analysis(queue: Queue, analysis: AnalysisRun) -> None:
     try:
         queue.enqueue(
@@ -232,3 +244,47 @@ async def get_analysis_learning_plan(
         )
     report = ReportSnapshot.model_validate(analysis.report_snapshot)
     return generate_learning_plan(report)
+
+
+@router.post("/{analysis_id}/cv-alignment", response_model=CvAlignment)
+async def create_cv_alignment(
+    analysis_id: str,
+    request: Request,
+    session: SessionDependency,
+    owner_id: OwnerDependency,
+    file: Annotated[UploadFile, File()],
+) -> CvAlignment:
+    analysis = await session.get(AnalysisRun, analysis_id)
+    if analysis is None or not await owner_requested_analysis(session, owner_id, analysis_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.evidence_snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="CV alignment is not ready",
+        )
+    settings = request.app.state.settings
+    content = await file.read(settings.cv_upload_max_bytes + 1)
+    if len(content) > settings.cv_upload_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="CV upload is too large",
+        )
+    try:
+        text = extract_cv_text(
+            file.filename or "",
+            content,
+            max_pages=settings.cv_max_pages,
+            max_characters=settings.cv_max_characters,
+        )
+    except CvFileError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+    evidence = EvidenceSnapshot.model_validate(analysis.evidence_snapshot)
+    return align_cv_to_evidence(
+        analysis.github_username,
+        file.filename or "",
+        text,
+        evidence,
+    )

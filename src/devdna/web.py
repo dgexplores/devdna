@@ -20,7 +20,8 @@ from pydantic import ValidationError
 from rq import Queue
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from devdna.analyses import analyses_for_owner, start_analysis
+from devdna.analyses import analyses_for_owner, owner_requested_analysis, start_analysis
+from devdna.cv import CvFileError, align_cv_to_evidence, extract_cv_text
 from devdna.database import get_session
 from devdna.learning import generate_learning_plan
 from devdna.models import AnalysisRun, RecruiterBatch
@@ -29,6 +30,8 @@ from devdna.recruiter import batch_response, create_batch
 from devdna.rubrics import get_rubric
 from devdna.schemas import (
     AnalysisCreate,
+    CvAlignment,
+    EvidenceSnapshot,
     LearningPlan,
     LearningRecommendation,
     ReadmeDraft,
@@ -44,7 +47,7 @@ from devdna.web_sessions import SESSION_COOKIE, create_web_session, verify_web_s
 
 router = APIRouter(tags=["web"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
-ASSET_VERSION = "2"
+ASSET_VERSION = "3"
 FAVICON = (
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E"
     "%3Crect width='64' height='64' rx='12' fill='%232457d6'/%3E"
@@ -302,12 +305,94 @@ def render_readme_page(username: str, analysis_id: str, draft: ReadmeDraft) -> s
     <textarea class="markdown-draft" readonly spellcheck="false"
       aria-label="Generated profile README Markdown">{escape(draft.markdown)}</textarea>
   </section>
+  <section class="cv-panel" aria-labelledby="cv-title">
+    <div>
+      <p class="eyebrow">Optional CV check</p>
+      <h2 id="cv-title">Compare your CV with public evidence.</h2>
+      <p>Upload a PDF or DOCX to see which stated skills this GitHub analysis can verify.
+        Your file is processed in memory and is not saved.</p>
+    </div>
+    <form class="cv-form" method="post"
+      action="/reports/{escape(analysis_id, quote=True)}/cv-align"
+      enctype="multipart/form-data">
+      <div class="field-group">
+        <label for="cv_file">CV file</label>
+        <input id="cv_file" name="file" type="file" accept=".pdf,.docx" required>
+        <p class="field-help">PDF or DOCX, up to 2 MB. Image-only PDFs are not supported.</p>
+      </div>
+      <button class="button button-primary" type="submit">Check CV evidence</button>
+    </form>
+  </section>
   <footer>
     <p>Every technical claim comes from the saved DevDNA evidence report.</p>
     <p>Review personal wording before publishing.</p>
   </footer>
 </main>"""
     return page_shell(f"{username} | DevDNA README draft", content)
+
+
+def render_cv_skill_list(alignment: CvAlignment, *, verified: bool) -> str:
+    expected_status = "verified" if verified else "self_reported_unverified"
+    entries = []
+    for skill in alignment.skills:
+        if skill.status != expected_status:
+            continue
+        sources = "".join(
+            f'<li><a href="{escape(source.url, quote=True)}" target="_blank" '
+            f'rel="noopener noreferrer">{escape(source.repository)} / '
+            f"{escape(source.path)}</a></li>"
+            for source in skill.evidence_sources
+        )
+        source_list = f'<ul class="cv-source-list">{sources}</ul>' if sources else ""
+        entries.append(
+            f'<li class="cv-skill"><strong>{escape(skill.skill)}</strong>{source_list}</li>'
+        )
+    if not entries:
+        message = (
+            "No matching public evidence found." if verified else "No CV-only skills detected."
+        )
+        return f'<p class="empty-note">{message}</p>'
+    return f'<ul class="cv-skill-list">{"".join(entries)}</ul>'
+
+
+def render_cv_alignment_page(
+    username: str,
+    analysis_id: str,
+    alignment: CvAlignment,
+) -> str:
+    guidance = "".join(f"<li>{escape(item)}</li>" for item in alignment.guidance)
+    content = f"""
+<header class="topbar">
+  <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>CV evidence check</span></a>
+  <a class="button button-secondary button-compact"
+    href="/reports/{escape(analysis_id, quote=True)}/readme">Back to README studio</a>
+</header>
+<main class="cv-alignment-shell">
+  <section class="cv-result-hero">
+    <p class="eyebrow">{escape(alignment.source_filename)}</p>
+    <h1>CV claims, checked against {escape(username)}’s GitHub evidence.</h1>
+    <p>{escape(alignment.suggested_summary)}</p>
+  </section>
+  <section class="cv-groups" aria-label="CV skill alignment">
+    <article class="cv-group verified">
+      <p class="row-state">Verified in GitHub</p>
+      <h2>Supported claims</h2>
+      <p>These skills have direct repository evidence in the saved analysis.</p>
+      {render_cv_skill_list(alignment, verified=True)}
+    </article>
+    <article class="cv-group unverified">
+      <p class="row-state">CV only — not verified</p>
+      <h2>Evidence still needed</h2>
+      <p>These items cannot be presented as verified until public repository evidence exists.</p>
+      {render_cv_skill_list(alignment, verified=False)}
+    </article>
+  </section>
+  <section class="cv-guidance" aria-labelledby="guidance-title">
+    <h2 id="guidance-title">What to do next</h2>
+    <ul>{guidance}</ul>
+  </section>
+</main>"""
+    return page_shell(f"{username} | DevDNA CV alignment", content)
 
 
 def render_learning_recommendation(item: LearningRecommendation) -> str:
@@ -900,6 +985,60 @@ async def download_readme(analysis_id: str, session: SessionDependency) -> Plain
         media_type="text/markdown",
         headers={"Content-Disposition": 'attachment; filename="README.md"'},
     )
+
+
+@router.post("/reports/{analysis_id}/cv-align", response_class=HTMLResponse)
+async def cv_alignment_page(
+    analysis_id: str,
+    request: Request,
+    session: SessionDependency,
+    file: Annotated[UploadFile, File()],
+) -> HTMLResponse:
+    owner_id = verify_web_session(
+        request.cookies.get(SESSION_COOKIE),
+        request.app.state.web_session_secret,
+    )
+    resolved_owner = owner_id or ("public" if not request.app.state.api_credentials else None)
+    analysis = await session.get(AnalysisRun, analysis_id)
+    if (
+        analysis is None
+        or resolved_owner is None
+        or not await owner_requested_analysis(session, resolved_owner, analysis_id)
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.evidence_snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="CV alignment is not ready",
+        )
+
+    settings = request.app.state.settings
+    content = await file.read(settings.cv_upload_max_bytes + 1)
+    if len(content) > settings.cv_upload_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="CV upload is too large",
+        )
+    try:
+        cv_text = extract_cv_text(
+            file.filename or "",
+            content,
+            max_pages=settings.cv_max_pages,
+            max_characters=settings.cv_max_characters,
+        )
+    except CvFileError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+
+    alignment = align_cv_to_evidence(
+        analysis.github_username,
+        file.filename or "",
+        cv_text,
+        EvidenceSnapshot.model_validate(analysis.evidence_snapshot),
+    )
+    return HTMLResponse(render_cv_alignment_page(analysis.github_username, analysis.id, alignment))
 
 
 @router.get("/reports/{analysis_id}/learning", response_class=HTMLResponse)

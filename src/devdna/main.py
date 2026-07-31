@@ -128,11 +128,16 @@ def create_app(
                 )
                 add_security_headers(response, request.url.path)
                 return response
-            request_limit = (
-                settings.recruiter_upload_max_bytes
-                if request.url.path in {"/v1/recruiter/batches", "/recruiter/batches"}
-                else settings.max_request_bytes
-            )
+            if request.url.path in {"/v1/recruiter/batches", "/recruiter/batches"}:
+                request_limit = settings.recruiter_upload_max_bytes
+            elif request.url.path.endswith("/cv-alignment") or request.url.path.endswith(
+                "/cv-align"
+            ):
+                # Multipart framing adds a small amount beyond the file itself.
+                # The endpoint still enforces the exact file-size limit.
+                request_limit = settings.cv_upload_max_bytes + 65_536
+            else:
+                request_limit = settings.max_request_bytes
             if request_bytes > request_limit:
                 response = JSONResponse(
                     status_code=status.HTTP_413_CONTENT_TOO_LARGE,

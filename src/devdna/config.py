@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     recruiter_batch_max_candidates: int = Field(default=50, ge=1, le=250)
     recruiter_batch_rate_limit: int = Field(default=3, ge=1, le=100)
     recruiter_batch_rate_window_seconds: int = Field(default=60, ge=1, le=3600)
+    cv_upload_max_bytes: int = Field(default=2_097_152, ge=1024, le=10_485_760)
+    cv_max_pages: int = Field(default=10, ge=1, le=50)
+    cv_max_characters: int = Field(default=100_000, ge=1000, le=500_000)
 
     model_config = SettingsConfigDict(
         env_file=".env",

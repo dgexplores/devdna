@@ -115,6 +115,17 @@ bounded retention window as analysis data.
 clients cannot access each other's batches, comparison never uses protected traits or vanity
 metrics, and the UI states that coverage cannot make a hiring decision.
 
+## Milestone 10 — CV-to-GitHub evidence alignment
+
+**Status:** completed on 31 July 2026. The owner of a completed analysis can upload a bounded PDF
+or DOCX CV from the README studio or authenticated API. DevDNA extracts text in memory, matches a
+small deterministic skill catalog to the saved evidence snapshot, and presents GitHub-verified
+and self-reported-but-unverified skills separately. Neither raw bytes nor extracted text is saved.
+
+**Done when:** PDF and DOCX extraction, byte/page/text limits, owner isolation, invalid input,
+responsive browser output, and the rule preventing CV-only claims from entering the verified
+summary are covered by automated tests.
+
 ## Test strategy
 
 - Unit tests: evidence rules and rubric matching.

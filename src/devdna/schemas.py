@@ -204,3 +204,19 @@ class RecruiterBatchResponse(BaseModel):
     source_filename: str
     created_at: datetime
     candidates: list[RecruiterCandidateResult]
+
+
+class CvSkillAlignment(BaseModel):
+    skill: str
+    status: Literal["verified", "self_reported_unverified"]
+    evidence_sources: list[EvidenceSource] = Field(default_factory=list)
+
+
+class CvAlignment(BaseModel):
+    schema_version: str
+    analyzer_version: str
+    github_username: str
+    source_filename: str
+    skills: list[CvSkillAlignment]
+    suggested_summary: str
+    guidance: list[str]

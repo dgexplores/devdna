@@ -66,9 +66,10 @@ The current release stores the immutable public GitHub collection in `profile_sn
 - Begin with public GitHub data only.
 - Keep secrets in deployment environment variables; never return them in logs or API responses.
 - Bound mutation request bodies and apply content-type, framing, referrer, permissions, and report-page content security headers in the API.
-- Validate upload and URL inputs before future CV support.
+- CV alignment parses bounded PDF/DOCX uploads in memory and compares them only with the immutable
+  saved evidence snapshot; raw bytes and extracted text never enter the database.
 - Encrypt OAuth tokens at rest when OAuth is added.
-- Define retention/deletion controls before storing CVs or recruitment lists.
+- Do not store CV content. Recruitment-list metadata follows the configured retention policy.
 - Recruitment features must not infer protected traits or make autonomous selection/rejection decisions.
 
 ## Market-signal governance
