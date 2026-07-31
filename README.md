@@ -108,6 +108,12 @@ Its final section contains separately labeled, dated market signals with primary
 signals do not affect the evidence report. The typed plan is available at
 `/v1/analyses/ANALYSIS_ID/learning`.
 
+Authenticated recruiter users can open `/recruiter` and upload a CSV or DOCX containing public
+GitHub usernames. The batch reuses the same evidence engine and compares candidates only by
+verified coverage of the selected role rubric. Pending candidates remain unranked, every result
+opens its evidence report, and the interface explicitly requires human review. The API endpoints
+are `POST /v1/recruiter/batches` and `GET /v1/recruiter/batches/BATCH_ID`.
+
 Production operations include a 90-day terminal-analysis retention command, verified PostgreSQL backup/restore scripts, migration checks in CI, dependency update automation, and a bounded read-path load smoke test. Exact commands and failure procedures are in [the operations runbook](docs/OPERATIONS.md).
 
 Stop local services without deleting PostgreSQL or Redis volumes:

@@ -724,6 +724,124 @@ footer p {
   margin: 0 auto;
 }
 
+.recruiter-shell,
+.candidate-shell {
+  width: min(1100px, 92vw);
+  min-height: 100dvh;
+  margin: 0 auto;
+}
+
+.recruiter-hero {
+  display: grid;
+  min-height: min(680px, calc(100dvh - 68px));
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: clamp(3rem, 8vw, 7rem);
+  align-items: center;
+  padding: 5rem 0;
+}
+
+.recruiter-hero h1 {
+  font-size: clamp(3.4rem, 6.5vw, 6.2rem);
+}
+
+.recruiter-hero > div > p:last-child,
+.candidate-hero > p:last-child {
+  max-width: 620px;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.candidate-hero {
+  padding: clamp(5rem, 10vh, 7rem) 0 3rem;
+}
+
+.candidate-hero h1 {
+  font-size: clamp(3.5rem, 7vw, 6.4rem);
+}
+
+.human-review-note {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 1rem;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.human-review-note strong {
+  font-family: var(--data);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.human-review-note span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.candidate-list {
+  display: grid;
+  gap: 1rem;
+  padding: 3rem 0 5rem;
+}
+
+.candidate-row {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 1.2rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.candidate-rank {
+  color: var(--accent);
+  font-family: var(--data);
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+
+.candidate-heading,
+.candidate-evidence {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.candidate-heading {
+  align-items: start;
+}
+
+.candidate-heading h3 {
+  margin-bottom: 0.25rem;
+}
+
+.candidate-heading span,
+.candidate-main > p,
+.candidate-evidence p {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.candidate-heading > strong {
+  justify-self: end;
+  color: var(--accent);
+  font-family: var(--data);
+}
+
+.candidate-evidence {
+  margin-top: 1.2rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--line);
+}
+
+.candidate-evidence h4 {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+}
+
 .history-hero {
   padding: clamp(5rem, 11vh, 8rem) 0 4rem;
 }
@@ -1146,6 +1264,11 @@ footer p {
     width: min(100% - 2rem, 1180px);
   }
 
+  .recruiter-shell,
+  .candidate-shell {
+    width: min(100% - 2rem, 1100px);
+  }
+
   .topbar {
     padding: 0 1rem;
   }
@@ -1157,6 +1280,7 @@ footer p {
   .report-hero,
   .home-hero,
   .readme-hero,
+  .recruiter-hero,
   .readme-workspace,
   .learning-section,
   .market-section,
@@ -1167,7 +1291,8 @@ footer p {
 
   .report-hero,
   .home-hero,
-  .readme-hero {
+  .readme-hero,
+  .recruiter-hero {
     gap: 2.5rem;
     min-height: auto;
     padding: 4.5rem 0 3.5rem;
@@ -1250,6 +1375,21 @@ footer p {
     width: 100%;
     justify-content: space-between;
     text-align: left;
+  }
+
+  .human-review-note,
+  .candidate-heading,
+  .candidate-evidence {
+    grid-template-columns: 1fr;
+  }
+
+  .candidate-row {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 0.8rem;
+  }
+
+  .candidate-heading > strong {
+    justify-self: start;
   }
 }
 

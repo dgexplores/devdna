@@ -102,6 +102,19 @@ page; production requires an independent session-signing secret.
 **Done when:** two API clients cannot list each other's requests, session tampering and expiry are
 rejected, sign-out removes the cookie, and the migration preserves all existing analysis rows.
 
+## Milestone 9 — recruiter batch comparison
+
+**Status:** completed on 31 July 2026. Authenticated recruiters can upload a bounded CSV or DOCX
+containing up to 50 public GitHub usernames. DevDNA reuses the idempotent analysis queue, then
+orders completed candidates by transparent role-rubric coverage while leaving pending candidates
+unranked. Every row exposes strengths, gaps, and the underlying evidence report. Upload size,
+candidate count, tenant access, and batch frequency are enforced; batch metadata follows the same
+bounded retention window as analysis data.
+
+**Done when:** both file formats parse deterministic fixtures, invalid files fail safely, two
+clients cannot access each other's batches, comparison never uses protected traits or vanity
+metrics, and the UI states that coverage cannot make a hiring decision.
+
 ## Test strategy
 
 - Unit tests: evidence rules and rubric matching.

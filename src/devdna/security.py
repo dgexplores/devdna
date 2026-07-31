@@ -101,25 +101,14 @@ async def enforce_analysis_creation_access(
     client_id = authenticate_bearer(authorization_header, api_credentials)
     client_host = request.client.host if request.client else "unknown"
     rate_identity = f"client:{client_id}" if client_id else f"peer:{client_host}"
-    key = f"devdna:rate:analysis:{rate_identity}"
     settings = request.app.state.settings
-    try:
-        result: Any = await request.app.state.rate_limiter.eval(
-            RATE_LIMIT_SCRIPT,
-            1,
-            key,
-            settings.analysis_rate_window_seconds,
-        )
-        current, ttl = int(result[0]), max(1, int(result[1]))
-    except Exception as error:
-        logger.exception("Analysis rate limiter failed")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Rate limiter unavailable",
-        ) from error
-
-    response.headers["X-RateLimit-Limit"] = str(settings.analysis_rate_limit)
-    response.headers["X-RateLimit-Remaining"] = str(max(0, settings.analysis_rate_limit - current))
+    current, ttl = await enforce_fixed_window(
+        request,
+        response,
+        f"devdna:rate:analysis:{rate_identity}",
+        settings.analysis_rate_limit,
+        settings.analysis_rate_window_seconds,
+    )
     if current > settings.analysis_rate_limit:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -141,3 +130,56 @@ async def enforce_analysis_creation_access(
             },
         )
     request.state.api_client_id = client_id
+
+
+async def enforce_fixed_window(
+    request: Request,
+    response: Response,
+    key: str,
+    limit: int,
+    window_seconds: int,
+) -> tuple[int, int]:
+    try:
+        result: Any = await request.app.state.rate_limiter.eval(
+            RATE_LIMIT_SCRIPT,
+            1,
+            key,
+            window_seconds,
+        )
+        current, ttl = int(result[0]), max(1, int(result[1]))
+    except Exception as error:
+        logger.exception("Analysis rate limiter failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Rate limiter unavailable",
+        ) from error
+
+    response.headers["X-RateLimit-Limit"] = str(limit)
+    response.headers["X-RateLimit-Remaining"] = str(max(0, limit - current))
+    return current, ttl
+
+
+async def authorize_recruiter_batch(
+    request: Request,
+    response: Response,
+    owner_id: Annotated[str, Depends(authenticate_api_client)],
+) -> str:
+    settings = request.app.state.settings
+    current, ttl = await enforce_fixed_window(
+        request,
+        response,
+        f"devdna:rate:recruiter:{owner_id}",
+        settings.recruiter_batch_rate_limit,
+        settings.recruiter_batch_rate_window_seconds,
+    )
+    if current > settings.recruiter_batch_rate_limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Recruiter batch request limit exceeded",
+            headers={
+                "X-RateLimit-Limit": str(settings.recruiter_batch_rate_limit),
+                "X-RateLimit-Remaining": "0",
+                "Retry-After": str(ttl),
+            },
+        )
+    return owner_id

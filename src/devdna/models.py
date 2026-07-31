@@ -56,3 +56,31 @@ class AnalysisRequest(Base):
         default=lambda: datetime.now(UTC),
         index=True,
     )
+
+
+class RecruiterBatch(Base):
+    __tablename__ = "recruiter_batches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(48), index=True)
+    target_role: Mapped[str] = mapped_column(String(64))
+    source_filename: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+    )
+
+
+class RecruiterCandidate(Base):
+    __tablename__ = "recruiter_candidates"
+
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("recruiter_batches.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    analysis_id: Mapped[str] = mapped_column(
+        ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    github_username: Mapped[str] = mapped_column(String(39))
+    position: Mapped[int]

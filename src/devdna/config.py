@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     max_request_bytes: int = Field(default=16_384, ge=1024, le=1_048_576)
     analysis_retention_days: int = Field(default=90, ge=1, le=3650)
     retention_batch_size: int = Field(default=500, ge=1, le=10_000)
+    recruiter_upload_max_bytes: int = Field(default=1_048_576, ge=1024, le=5_242_880)
+    recruiter_batch_max_candidates: int = Field(default=50, ge=1, le=250)
+    recruiter_batch_rate_limit: int = Field(default=3, ge=1, le=100)
+    recruiter_batch_rate_window_seconds: int = Field(default=60, ge=1, le=3600)
 
     model_config = SettingsConfigDict(
         env_file=".env",

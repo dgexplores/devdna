@@ -18,6 +18,7 @@ from devdna.analyses import router as analyses_router
 from devdna.config import Settings, get_settings
 from devdna.logging import configure_logging
 from devdna.observability import RequestMetrics, request_id
+from devdna.recruiter import router as recruiter_router
 from devdna.security import parse_api_keys
 from devdna.web import asset_directory
 from devdna.web import router as web_router
@@ -127,7 +128,12 @@ def create_app(
                 )
                 add_security_headers(response, request.url.path)
                 return response
-            if request_bytes > settings.max_request_bytes:
+            request_limit = (
+                settings.recruiter_upload_max_bytes
+                if request.url.path in {"/v1/recruiter/batches", "/recruiter/batches"}
+                else settings.max_request_bytes
+            )
+            if request_bytes > request_limit:
                 response = JSONResponse(
                     status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                     content={"detail": "Request body is too large"},
@@ -191,6 +197,7 @@ def create_app(
         return response
 
     app.include_router(analyses_router)
+    app.include_router(recruiter_router)
     assets = asset_directory()
     if not assets.is_dir():
         raise RuntimeError("Web assets are missing")

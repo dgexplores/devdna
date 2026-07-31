@@ -4,7 +4,17 @@ from pathlib import Path
 from typing import Annotated, cast
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import ValidationError
 from rq import Queue
@@ -13,20 +23,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from devdna.analyses import analyses_for_owner, start_analysis
 from devdna.database import get_session
 from devdna.learning import generate_learning_plan
-from devdna.models import AnalysisRun
+from devdna.models import AnalysisRun, RecruiterBatch
 from devdna.readme import generate_profile_readme
+from devdna.recruiter import batch_response, create_batch
 from devdna.rubrics import get_rubric
 from devdna.schemas import (
     AnalysisCreate,
     LearningPlan,
     LearningRecommendation,
     ReadmeDraft,
+    RecruiterBatchResponse,
+    RecruiterCandidateResult,
     ReportAction,
     ReportGap,
     ReportSnapshot,
     ReportStrength,
 )
-from devdna.security import enforce_analysis_creation_access
+from devdna.security import enforce_analysis_creation_access, enforce_fixed_window
 from devdna.web_sessions import SESSION_COOKIE, create_web_session, verify_web_session
 
 router = APIRouter(tags=["web"])
@@ -89,6 +102,7 @@ def home_response(
     <div class="brand">DevDNA <span>Developer evidence</span></div>
     <nav class="home-links" aria-label="Primary navigation">
       <a href="/history">History</a>
+      <a href="/recruiter">Recruiter</a>
       <a href="/docs">API docs</a>
     </nav>
   </header>
@@ -430,6 +444,100 @@ def render_history_page(analyses: list[AnalysisRun], authenticated: bool) -> str
     return page_shell("Analysis history | DevDNA", content)
 
 
+def render_recruiter_home(error: str | None = None) -> str:
+    error_markup = f'<p class="form-error" role="alert">{escape(error)}</p>' if error else ""
+    content = f"""
+<main class="recruiter-shell">
+  <header class="home-nav">
+    <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>Recruiter workspace</span></a>
+    <a class="button button-secondary button-compact" href="/history">History</a>
+  </header>
+  <section class="recruiter-hero">
+    <div>
+      <p class="eyebrow">Evidence comparison</p>
+      <h1>Review a candidate list with the same rubric.</h1>
+      <p>Upload public GitHub usernames. DevDNA compares reviewable engineering evidence and
+        leaves the hiring decision to people.</p>
+    </div>
+    <form class="analysis-form" method="post" action="/recruiter/batches"
+      enctype="multipart/form-data">
+      <div class="form-heading">
+        <h2>Create a batch</h2>
+        <p>Up to 50 candidates per CSV or DOCX file.</p>
+      </div>
+      {error_markup}
+      <div class="field-group">
+        <label for="candidate_file">Candidate file</label>
+        <input id="candidate_file" name="file" type="file" accept=".csv,.docx" required>
+        <p class="field-help">Use a github_username column or GitHub profile links.</p>
+      </div>
+      <div class="field-group">
+        <label for="recruiter_role">Target role</label>
+        <select id="recruiter_role" name="target_role">
+          <option value="python_backend_developer">Python backend developer</option>
+        </select>
+      </div>
+      <button class="button button-primary form-submit" type="submit">Analyze candidates</button>
+    </form>
+  </section>
+  <footer>
+    <p>No protected traits are inferred. Coverage is not an autonomous hiring score.</p>
+  </footer>
+</main>"""
+    return page_shell("Recruiter workspace | DevDNA", content)
+
+
+def render_candidate(candidate: RecruiterCandidateResult) -> str:
+    coverage = (
+        f"{candidate.requirements_met} of {candidate.requirements_total}"
+        if candidate.requirements_met is not None
+        else "Analyzing"
+    )
+    return f"""
+<article class="candidate-row">
+  <div class="candidate-rank">{candidate.rank if candidate.rank is not None else "..."}</div>
+  <div class="candidate-main">
+    <div class="candidate-heading">
+      <div><h3>{escape(candidate.github_username)}</h3><span>{escape(candidate.status)}</span></div>
+      <strong>{coverage}</strong>
+    </div>
+    <p>{escape(candidate.alignment_label or "Repository analysis is still in progress.")}</p>
+    <div class="candidate-evidence">
+      <div><h4>Verified</h4><p>{escape(", ".join(candidate.strengths) or "Pending")}</p></div>
+      <div><h4>Not verified</h4><p>{escape(", ".join(candidate.gaps) or "Pending")}</p></div>
+    </div>
+    <a class="row-action" href="/reports/{escape(candidate.analysis_id, quote=True)}">
+      Open evidence report
+    </a>
+  </div>
+</article>"""
+
+
+def render_recruiter_batch(batch: RecruiterBatchResponse) -> str:
+    pending = any(item.status in {"queued", "running"} for item in batch.candidates)
+    cards = "".join(render_candidate(item) for item in batch.candidates)
+    content = f"""
+<header class="topbar">
+  <a class="brand" href="/recruiter">DevDNA <span>Candidate comparison</span></a>
+  <a class="button button-secondary button-compact" href="/recruiter">New batch</a>
+</header>
+<main class="candidate-shell">
+  <section class="candidate-hero">
+    <p class="eyebrow">Python backend developer</p>
+    <h1>Evidence comparison.</h1>
+    <p>{len(batch.candidates)} candidates from {escape(batch.source_filename)}. Ranked only by
+      verified coverage of this role rubric.</p>
+  </section>
+  <aside class="human-review-note">
+    <strong>Human review required</strong>
+    <span>Coverage helps order technical review. It must not automatically accept or reject
+      anyone.</span>
+  </aside>
+  <section class="candidate-list" aria-label="Candidate comparison">{cards}</section>
+</main>"""
+    return page_shell("Candidate comparison | DevDNA", content, refresh=pending)
+
+
 def render_report_page(
     username: str,
     analysis_id: str,
@@ -636,6 +744,107 @@ async def logout() -> RedirectResponse:
     response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response
+
+
+@router.get("/recruiter", response_class=HTMLResponse)
+async def recruiter_home(request: Request) -> HTMLResponse:
+    owner_id = verify_web_session(
+        request.cookies.get(SESSION_COOKIE),
+        request.app.state.web_session_secret,
+    )
+    if request.app.state.api_credentials and owner_id is None:
+        return home_response(
+            access_required=True,
+            error="Start an analysis with your access key before opening recruiter tools.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+    return HTMLResponse(render_recruiter_home())
+
+
+@router.post("/recruiter/batches", response_class=HTMLResponse)
+async def submit_recruiter_batch(
+    request: Request,
+    session: SessionDependency,
+    file: Annotated[UploadFile, File()],
+    target_role: Annotated[str, Form()] = "python_backend_developer",
+) -> Response:
+    owner_id = verify_web_session(
+        request.cookies.get(SESSION_COOKIE),
+        request.app.state.web_session_secret,
+    )
+    if request.app.state.api_credentials and owner_id is None:
+        return home_response(
+            access_required=True,
+            error="Your recruiter session is missing or expired.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+    settings = request.app.state.settings
+    policy_response = Response()
+    try:
+        current, ttl = await enforce_fixed_window(
+            request,
+            policy_response,
+            f"devdna:rate:recruiter:{owner_id or 'public'}",
+            settings.recruiter_batch_rate_limit,
+            settings.recruiter_batch_rate_window_seconds,
+        )
+    except HTTPException as error:
+        return HTMLResponse(
+            render_recruiter_home(str(error.detail)),
+            status_code=error.status_code,
+        )
+    if current > settings.recruiter_batch_rate_limit:
+        return HTMLResponse(
+            render_recruiter_home(f"Recruiter batch limit reached. Try again in {ttl} seconds."),
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers=rate_limit_headers(policy_response),
+        )
+    content = await file.read(settings.recruiter_upload_max_bytes + 1)
+    if len(content) > settings.recruiter_upload_max_bytes:
+        return HTMLResponse(
+            render_recruiter_home("Recruiter upload is too large."),
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+        )
+    try:
+        batch = await create_batch(
+            owner_id or "public",
+            file.filename or "",
+            content,
+            target_role,
+            session,
+            cast(Queue, request.app.state.queue),
+            settings.recruiter_batch_max_candidates,
+        )
+    except HTTPException as error:
+        return HTMLResponse(
+            render_recruiter_home(str(error.detail)),
+            status_code=error.status_code,
+        )
+    redirect = RedirectResponse(
+        url=f"/recruiter/batches/{batch.id}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    for name, value in rate_limit_headers(policy_response).items():
+        redirect.headers[name] = value
+    return redirect
+
+
+@router.get("/recruiter/batches/{batch_id}", response_class=HTMLResponse)
+async def recruiter_batch_page(
+    batch_id: str,
+    request: Request,
+    session: SessionDependency,
+) -> HTMLResponse:
+    owner_id = verify_web_session(
+        request.cookies.get(SESSION_COOKIE),
+        request.app.state.web_session_secret,
+    )
+    resolved_owner = owner_id or ("public" if not request.app.state.api_credentials else None)
+    batch = await session.get(RecruiterBatch, batch_id)
+    if batch is None or resolved_owner is None or batch.owner_id != resolved_owner:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
+    result = await batch_response(batch, session)
+    return HTMLResponse(render_recruiter_batch(result))
 
 
 @router.get("/reports/{analysis_id}", response_class=HTMLResponse)

@@ -184,3 +184,23 @@ class LearningPlan(BaseModel):
     generator_version: str
     target_role: str
     recommendations: list[LearningRecommendation]
+
+
+class RecruiterCandidateResult(BaseModel):
+    rank: int | None
+    analysis_id: str
+    github_username: str
+    status: AnalysisStatus
+    requirements_met: int | None = None
+    requirements_total: int | None = None
+    alignment_label: str | None = None
+    strengths: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+
+
+class RecruiterBatchResponse(BaseModel):
+    id: str
+    target_role: str
+    source_filename: str
+    created_at: datetime
+    candidates: list[RecruiterCandidateResult]

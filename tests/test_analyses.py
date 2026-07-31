@@ -49,6 +49,9 @@ def create_test_client(
     *,
     rate_limit: int = 10,
     max_request_bytes: int = 16_384,
+    recruiter_upload_max_bytes: int = 1_048_576,
+    recruiter_batch_max_candidates: int = 50,
+    recruiter_batch_rate_limit: int = 3,
     rate_limiter: FakeRateLimiter | None = None,
     api_keys: str | None = None,
 ) -> TestClient:
@@ -67,6 +70,9 @@ def create_test_client(
             database_url=database_url,
             analysis_rate_limit=rate_limit,
             max_request_bytes=max_request_bytes,
+            recruiter_upload_max_bytes=recruiter_upload_max_bytes,
+            recruiter_batch_max_candidates=recruiter_batch_max_candidates,
+            recruiter_batch_rate_limit=recruiter_batch_rate_limit,
             api_keys=SecretStr(api_keys) if api_keys else None,
         )
     )
@@ -198,6 +204,112 @@ def test_analysis_history_lists_only_authenticated_owner_requests(tmp_path: Path
     assert recruiter_history.status_code == 200
     assert recruiter_history.json() == []
     assert missing_auth.status_code == 401
+
+
+def test_recruiter_batch_is_bounded_and_owner_scoped(tmp_path: Path) -> None:
+    queue = FakeQueue()
+    client = create_test_client(
+        tmp_path / "recruiter-batch.db",
+        queue,
+        api_keys=("developer=correct-horse-battery-staple,recruiter=another-long-secret-value"),
+    )
+    developer_headers = {"Authorization": "Bearer developer.correct-horse-battery-staple"}
+    recruiter_headers = {"Authorization": "Bearer recruiter.another-long-secret-value"}
+    try:
+        created = client.post(
+            "/v1/recruiter/batches",
+            headers=developer_headers,
+            data={"target_role": "python_backend_developer"},
+            files={
+                "file": (
+                    "candidates.csv",
+                    b"github_username\noctocat\nhubot\n",
+                    "text/csv",
+                )
+            },
+        )
+        batch_id = created.json()["id"]
+        owner_view = client.get(f"/v1/recruiter/batches/{batch_id}", headers=developer_headers)
+        other_owner_view = client.get(
+            f"/v1/recruiter/batches/{batch_id}", headers=recruiter_headers
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert created.status_code == 202
+    assert [item["github_username"] for item in created.json()["candidates"]] == [
+        "octocat",
+        "hubot",
+    ]
+    assert all(item["rank"] is None for item in created.json()["candidates"])
+    assert owner_view.status_code == 200
+    assert other_owner_view.status_code == 404
+    assert len(queue.jobs) == 2
+
+
+def test_recruiter_upload_rejects_invalid_and_large_files(tmp_path: Path) -> None:
+    client = create_test_client(
+        tmp_path / "recruiter-invalid.db",
+        FakeQueue(),
+        recruiter_upload_max_bytes=1024,
+    )
+    try:
+        invalid = client.post(
+            "/v1/recruiter/batches",
+            files={"file": ("candidates.txt", b"octocat", "text/plain")},
+        )
+        oversized = client.post(
+            "/v1/recruiter/batches",
+            files={"file": ("candidates.csv", b"x" * 1100, "text/csv")},
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert invalid.status_code == 422
+    assert invalid.json()["detail"] == "Upload a .csv or .docx file"
+    assert oversized.status_code == 413
+
+
+def test_recruiter_web_flow_creates_refreshing_comparison(tmp_path: Path) -> None:
+    client = create_test_client(tmp_path / "recruiter-web.db", FakeQueue())
+    try:
+        workspace = client.get("/recruiter")
+        submitted = client.post(
+            "/recruiter/batches",
+            data={"target_role": "python_backend_developer"},
+            files={"file": ("candidates.csv", b"octocat\nhubot\n", "text/csv")},
+            follow_redirects=False,
+        )
+        comparison = client.get(submitted.headers["location"])
+    finally:
+        client.__exit__(None, None, None)
+
+    assert workspace.status_code == 200
+    assert "Create a batch" in workspace.text
+    assert submitted.status_code == 303
+    assert comparison.status_code == 200
+    assert "Human review required" in comparison.text
+    assert "octocat" in comparison.text
+    assert '<meta http-equiv="refresh" content="3">' in comparison.text
+
+
+def test_recruiter_batch_creation_is_rate_limited(tmp_path: Path) -> None:
+    client = create_test_client(
+        tmp_path / "recruiter-rate.db",
+        FakeQueue(),
+        recruiter_batch_rate_limit=1,
+    )
+    upload = {"file": ("candidates.csv", b"octocat\n", "text/csv")}
+    try:
+        allowed = client.post("/v1/recruiter/batches", files=upload)
+        blocked = client.post("/v1/recruiter/batches", files=upload)
+    finally:
+        client.__exit__(None, None, None)
+
+    assert allowed.status_code == 202
+    assert allowed.headers["X-RateLimit-Remaining"] == "0"
+    assert blocked.status_code == 429
+    assert int(blocked.headers["Retry-After"]) > 0
 
 
 def test_web_form_returns_inline_validation_error(tmp_path: Path) -> None:
