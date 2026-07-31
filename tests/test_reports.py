@@ -100,7 +100,8 @@ def test_render_report_page_escapes_source_paths_and_exposes_evidence() -> None:
     html = render_report_page("octocat", "analysis-id", report)
 
     assert "The evidence spine" in html
-    assert "What strengthens the profile next" in html
+    assert "Build next" in html
+    assert 'aria-label="Rubric coverage"' in html
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
     assert "/v1/analyses/analysis-id/report" in html

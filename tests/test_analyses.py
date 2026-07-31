@@ -103,7 +103,8 @@ def test_create_and_get_analysis(tmp_path: Path) -> None:
     assert pending_report.status_code == 409
     assert pending_report.json()["detail"] == "Report is not ready"
     assert pending_page.status_code == 202
-    assert "Reading octocat’s repositories" in pending_page.text
+    assert "Reading octocat’s work" in pending_page.text
+    assert 'aria-busy="true"' in pending_page.text
     assert len(queue.jobs) == 1
     assert queue.jobs[0][1]["job_timeout"] == 300
     assert queue.jobs[0][1]["retry"].max == 2
