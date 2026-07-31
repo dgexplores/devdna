@@ -504,45 +504,121 @@ footer p {
   font-size: clamp(1.05rem, 1.4vw, 1.22rem);
 }
 
-.home-proof {
-  padding: 1.8rem;
+.analysis-form {
+  padding: 1.7rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow);
 }
 
-.proof-lead {
-  margin-bottom: 2rem;
-  color: var(--accent);
-  font-size: 1.1rem;
-  font-weight: 750;
+.form-heading {
+  margin-bottom: 1.5rem;
 }
 
-.home-proof dl {
+.form-heading h2 {
+  margin-bottom: 0.35rem;
+  font-size: 1.55rem;
+  letter-spacing: -0.025em;
+}
+
+.form-heading p,
+.field-help {
+  color: var(--muted);
+}
+
+.form-heading p {
   margin-bottom: 0;
+  font-size: 0.88rem;
 }
 
-.home-proof dl div {
+.field-group {
   display: grid;
-  grid-template-columns: 90px 1fr;
-  gap: 1rem;
-  padding: 1rem 0;
-  border-top: 1px solid var(--line);
+  gap: 0.5rem;
+  margin-bottom: 1rem;
 }
 
-.home-proof dt {
+.field-group label {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.field-group input,
+.field-group select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--page);
+  font: inherit;
+  font-size: 0.9rem;
+  transition: border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
+}
+
+.field-group input::placeholder {
+  color: var(--faint);
+}
+
+.field-group input:focus,
+.field-group select:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.username-input {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--page);
+  transition: border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
+}
+
+.username-input:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.username-input > span {
+  padding-left: 0.85rem;
   color: var(--faint);
   font-family: var(--data);
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-size: 0.75rem;
 }
 
-.home-proof dd {
+.username-input input {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.username-input input:focus {
+  box-shadow: none;
+}
+
+.field-help {
   margin-bottom: 0;
-  font-size: 0.9rem;
+  font-size: 0.7rem;
+}
+
+.form-error {
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--line));
+  border-radius: 10px;
+  color: var(--warning);
+  background: var(--warning-soft);
+  font-size: 0.8rem;
   font-weight: 650;
+}
+
+.form-submit {
+  width: 100%;
+  margin-top: 0.25rem;
 }
 
 .home-workflow {
@@ -658,12 +734,12 @@ footer p {
 @media (prefers-reduced-motion: no-preference) {
   .hero-content,
   .home-intro,
-  .home-proof,
+  .analysis-form,
   .coverage-block {
     animation: enter 520ms var(--ease-out) both;
   }
 
-  .home-proof,
+  .analysis-form,
   .coverage-block {
     animation-delay: 90ms;
   }

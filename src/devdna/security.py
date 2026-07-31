@@ -66,11 +66,19 @@ async def authorize_analysis_creation(
     response: Response,
     authorization: BearerCredential,
 ) -> None:
-    api_credentials: dict[str, bytes] = request.app.state.api_credentials
     header = (
         f"{authorization.scheme} {authorization.credentials}" if authorization is not None else None
     )
-    client_id = authenticate_bearer(header, api_credentials)
+    await enforce_analysis_creation_access(request, response, header)
+
+
+async def enforce_analysis_creation_access(
+    request: Request,
+    response: Response,
+    authorization_header: str | None,
+) -> None:
+    api_credentials: dict[str, bytes] = request.app.state.api_credentials
+    client_id = authenticate_bearer(authorization_header, api_credentials)
     client_host = request.client.host if request.client else "unknown"
     rate_identity = f"client:{client_id}" if client_id else f"peer:{client_host}"
     key = f"devdna:rate:analysis:{rate_identity}"

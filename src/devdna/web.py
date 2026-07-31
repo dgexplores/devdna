@@ -1,15 +1,21 @@
+from collections.abc import Mapping
 from html import escape
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
+from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import ValidationError
+from rq import Queue
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from devdna.analyses import start_analysis
 from devdna.database import get_session
 from devdna.models import AnalysisRun
 from devdna.rubrics import get_rubric
-from devdna.schemas import ReportAction, ReportGap, ReportSnapshot, ReportStrength
+from devdna.schemas import AnalysisCreate, ReportAction, ReportGap, ReportSnapshot, ReportStrength
+from devdna.security import enforce_analysis_creation_access
 
 router = APIRouter(tags=["web"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
@@ -38,6 +44,106 @@ def page_shell(title: str, content: str, refresh: bool = False) -> str:
   {content}
 </body>
 </html>"""
+
+
+def home_response(
+    *,
+    access_required: bool,
+    error: str | None = None,
+    username: str = "",
+    status_code: int = status.HTTP_200_OK,
+    headers: Mapping[str, str] | None = None,
+) -> HTMLResponse:
+    error_markup = (
+        f'<p class="form-error" id="analysis-error" role="alert">{escape(error)}</p>'
+        if error
+        else ""
+    )
+    error_reference = ' aria-describedby="analysis-error"' if error else ""
+    access_field = (
+        f"""
+      <div class="field-group">
+        <label for="access_key">Access key</label>
+        <input id="access_key" name="access_key" type="password" required
+          autocomplete="current-password"{error_reference}>
+        <p class="field-help">Use the DevDNA access key provided to your team.</p>
+      </div>"""
+        if access_required
+        else ""
+    )
+    content = f"""
+<main class="home-shell">
+  <header class="home-nav">
+    <div class="brand">DevDNA <span>Developer evidence</span></div>
+    <a class="button button-secondary button-compact" href="/docs">API docs</a>
+  </header>
+  <section class="home-hero">
+    <div class="home-intro">
+      <p class="eyebrow">Evidence-first developer intelligence</p>
+      <h1>See the work behind the profile.</h1>
+      <p>DevDNA turns public repository files into explainable skill evidence and
+        focused next steps.</p>
+    </div>
+    <form class="analysis-form" method="post" action="/analyses">
+      <div class="form-heading">
+        <h2>Analyze a developer</h2>
+        <p>Start with a public GitHub account.</p>
+      </div>
+      {error_markup}
+      <div class="field-group">
+        <label for="github_username">GitHub username</label>
+        <div class="username-input">
+          <span aria-hidden="true">github.com/</span>
+          <input id="github_username" name="github_username" value="{escape(username, quote=True)}"
+            required maxlength="39" autocomplete="off" autocapitalize="none" spellcheck="false"
+            placeholder="octocat"{error_reference}>
+        </div>
+        <p class="field-help">Public repositories only. No GitHub password is required.</p>
+      </div>
+      <div class="field-group">
+        <label for="target_role">Target role</label>
+        <select id="target_role" name="target_role">
+          <option value="python_backend_developer">Python backend developer</option>
+        </select>
+      </div>
+      {access_field}
+      <button class="button button-primary form-submit" type="submit">Analyze profile</button>
+    </form>
+  </section>
+  <section class="home-workflow" aria-labelledby="workflow-title">
+    <h2 id="workflow-title">From GitHub to a useful decision</h2>
+    <ol>
+      <li>
+        <strong>Inspect repositories</strong>
+        <span>Read public source, tests, documentation, and delivery files.</span>
+      </li>
+      <li>
+        <strong>Verify evidence</strong>
+        <span>Match concrete artifacts to a role-specific engineering rubric.</span>
+      </li>
+      <li>
+        <strong>Explain the result</strong>
+        <span>Show strengths, gaps, sources, and prioritized recommendations.</span>
+      </li>
+    </ol>
+  </section>
+  <footer class="home-footer">
+    <p>Built for developers and hiring teams who need explainable signals.</p>
+  </footer>
+</main>"""
+    return HTMLResponse(
+        page_shell("DevDNA evidence reports", content),
+        status_code=status_code,
+        headers=headers,
+    )
+
+
+def rate_limit_headers(response: Response) -> dict[str, str]:
+    return {
+        name: value
+        for name, value in response.headers.items()
+        if name.lower().startswith("x-ratelimit-") or name.lower() == "retry-after"
+    }
 
 
 def render_pending_page(username: str, analysis_id: str, analysis_status: str) -> str:
@@ -206,52 +312,77 @@ def render_report_page(
 
 
 @router.get("/", response_class=HTMLResponse)
-async def home() -> HTMLResponse:
-    content = """
-<main class="home-shell">
-  <header class="home-nav">
-    <div class="brand">DevDNA <span>Developer evidence</span></div>
-    <a class="button button-secondary button-compact" href="/docs">API docs</a>
-  </header>
-  <section class="home-hero">
-    <div class="home-intro">
-      <p class="eyebrow">Evidence-first developer intelligence</p>
-      <h1>See the work behind the profile.</h1>
-      <p>DevDNA turns public repository files into explainable skill evidence and
-        focused next steps.</p>
-      <a class="button button-primary" href="/docs">Start with the API</a>
-    </div>
-    <aside class="home-proof" aria-label="How DevDNA evaluates developers">
-      <p class="proof-lead">No vanity metrics.</p>
-      <dl>
-        <div><dt>Claims</dt><dd>Linked to exact files</dd></div>
-        <div><dt>Gaps</dt><dd>Marked as unverified</dd></div>
-        <div><dt>Next steps</dt><dd>Ordered by role fit</dd></div>
-      </dl>
-    </aside>
-  </section>
-  <section class="home-workflow" aria-labelledby="workflow-title">
-    <h2 id="workflow-title">From GitHub to a useful decision</h2>
-    <ol>
-      <li>
-        <strong>Inspect repositories</strong>
-        <span>Read public source, tests, documentation, and delivery files.</span>
-      </li>
-      <li>
-        <strong>Verify evidence</strong>
-        <span>Match concrete artifacts to a role-specific engineering rubric.</span>
-      </li>
-      <li>
-        <strong>Explain the result</strong>
-        <span>Show strengths, gaps, sources, and prioritized recommendations.</span>
-      </li>
-    </ol>
-  </section>
-  <footer class="home-footer">
-    <p>Built for developers and hiring teams who need explainable signals.</p>
-  </footer>
-</main>"""
-    return HTMLResponse(page_shell("DevDNA evidence reports", content))
+async def home(request: Request) -> HTMLResponse:
+    return home_response(access_required=bool(request.app.state.api_credentials))
+
+
+@router.post("/analyses", response_class=HTMLResponse)
+async def submit_analysis(request: Request, session: SessionDependency) -> Response:
+    if request.headers.get("content-type", "").split(";", 1)[0] != (
+        "application/x-www-form-urlencoded"
+    ):
+        return home_response(
+            access_required=bool(request.app.state.api_credentials),
+            error="The analysis form could not be read. Please submit it again.",
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        )
+
+    try:
+        fields = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
+    except UnicodeDecodeError:
+        return home_response(
+            access_required=bool(request.app.state.api_credentials),
+            error="The analysis form contains invalid text.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    username = fields.get("github_username", [""])[0].strip()
+    target_role = fields.get("target_role", [""])[0]
+    access_key = fields.get("access_key", [""])[0]
+    policy_response = Response()
+    authorization_header = f"Bearer {access_key}" if access_key else None
+    try:
+        await enforce_analysis_creation_access(request, policy_response, authorization_header)
+    except HTTPException as error:
+        return home_response(
+            access_required=bool(request.app.state.api_credentials),
+            error=str(error.detail),
+            username=username,
+            status_code=error.status_code,
+            headers=error.headers,
+        )
+
+    try:
+        payload = AnalysisCreate.model_validate(
+            {"github_username": username, "target_role": target_role}
+        )
+    except ValidationError:
+        return home_response(
+            access_required=bool(request.app.state.api_credentials),
+            error="Enter a valid GitHub username and select a supported role.",
+            username=username,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            headers=rate_limit_headers(policy_response),
+        )
+
+    try:
+        analysis = await start_analysis(payload, session, cast(Queue, request.app.state.queue))
+    except HTTPException as error:
+        return home_response(
+            access_required=bool(request.app.state.api_credentials),
+            error=str(error.detail),
+            username=username,
+            status_code=error.status_code,
+            headers=rate_limit_headers(policy_response),
+        )
+
+    redirect = RedirectResponse(
+        url=f"/reports/{analysis.id}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    for name, value in rate_limit_headers(policy_response).items():
+        redirect.headers[name] = value
+    return redirect
 
 
 @router.get("/reports/{analysis_id}", response_class=HTMLResponse)

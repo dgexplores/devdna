@@ -19,6 +19,12 @@ class FakeQueue:
         self.fail = fail
         self.jobs: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
+    def fetch_job(self, job_id: str) -> object | None:
+        return next(
+            (object() for _, options in self.jobs if options.get("job_id") == job_id),
+            None,
+        )
+
     def enqueue(self, *args: Any, **kwargs: Any) -> None:
         if self.fail:
             raise RuntimeError("queue unavailable")
@@ -108,6 +114,102 @@ def test_create_and_get_analysis(tmp_path: Path) -> None:
     assert len(queue.jobs) == 1
     assert queue.jobs[0][1]["job_timeout"] == 300
     assert queue.jobs[0][1]["retry"].max == 2
+
+
+def test_web_form_starts_analysis_and_redirects_to_progress(tmp_path: Path) -> None:
+    queue = FakeQueue()
+    client = create_test_client(tmp_path / "web-form.db", queue)
+    try:
+        home = client.get("/")
+        submitted = client.post(
+            "/analyses",
+            data={
+                "github_username": "Octocat",
+                "target_role": "python_backend_developer",
+            },
+            follow_redirects=False,
+        )
+        progress = client.get(submitted.headers["location"])
+    finally:
+        client.__exit__(None, None, None)
+
+    assert home.status_code == 200
+    assert '<form class="analysis-form" method="post" action="/analyses">' in home.text
+    assert submitted.status_code == 303
+    assert submitted.headers["location"].startswith("/reports/")
+    assert submitted.headers["X-RateLimit-Remaining"] == "9"
+    assert progress.status_code == 202
+    assert "Reading octocat’s work" in progress.text
+    assert len(queue.jobs) == 1
+
+
+def test_duplicate_request_recovers_missing_queue_job(tmp_path: Path) -> None:
+    queue = FakeQueue()
+    client = create_test_client(tmp_path / "recover-queue.db", queue)
+    payload = {
+        "github_username": "octocat",
+        "target_role": "python_backend_developer",
+    }
+    try:
+        created = client.post("/v1/analyses", json=payload)
+        queue.jobs.clear()
+        recovered = client.post("/v1/analyses", json=payload)
+    finally:
+        client.__exit__(None, None, None)
+
+    assert recovered.status_code == 202
+    assert recovered.json()["id"] == created.json()["id"]
+    assert recovered.json()["status"] == "queued"
+    assert len(queue.jobs) == 1
+    assert queue.jobs[0][1]["job_id"] == created.json()["id"]
+
+
+def test_web_form_returns_inline_validation_error(tmp_path: Path) -> None:
+    client = create_test_client(tmp_path / "web-form-invalid.db", FakeQueue())
+    try:
+        response = client.post(
+            "/analyses",
+            data={
+                "github_username": "-invalid--name",
+                "target_role": "python_backend_developer",
+            },
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert response.status_code == 422
+    assert 'class="form-error"' in response.text
+    assert "Enter a valid GitHub username" in response.text
+    assert 'aria-describedby="analysis-error"' in response.text
+
+
+def test_web_form_requires_configured_access_key(tmp_path: Path) -> None:
+    queue = FakeQueue()
+    client = create_test_client(
+        tmp_path / "web-form-auth.db",
+        queue,
+        api_keys="developer=correct-horse-battery-staple",
+    )
+    payload = {
+        "github_username": "octocat",
+        "target_role": "python_backend_developer",
+    }
+    try:
+        home = client.get("/")
+        missing = client.post("/analyses", data=payload)
+        allowed = client.post(
+            "/analyses",
+            data={**payload, "access_key": "developer.correct-horse-battery-staple"},
+            follow_redirects=False,
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert 'type="password"' in home.text
+    assert missing.status_code == 401
+    assert "Valid bearer API key required" in missing.text
+    assert allowed.status_code == 303
+    assert len(queue.jobs) == 1
 
 
 def test_rejects_invalid_github_username(tmp_path: Path) -> None:

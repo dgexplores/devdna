@@ -53,6 +53,11 @@ With Docker installed, start the complete stack:
 docker compose up --build
 ```
 
+Open `http://localhost:8000` to start an analysis from the responsive web interface. The form
+validates the account, starts the background job, and shows progress until the evidence report is
+ready. When `DEVDNA_API_KEYS` is configured, the page asks for the same `client.secret` access key
+used by the API and never stores or reflects it.
+
 Submit a public GitHub profile analysis:
 
 ```bash

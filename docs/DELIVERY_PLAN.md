@@ -56,6 +56,18 @@ The operating baseline includes PostgreSQL backup and confirmed restore procedur
 
 **Done when:** the full static and automated suite passes, the production image builds, migrations reach a single clean head, authentication/rate-limit failure paths are exercised, a backup can be listed and restored, the load threshold passes, and all services can be stopped without deleting persistent volumes.
 
+## Milestone 5 — interactive developer workflow
+
+**Status:** completed on 31 July 2026. The responsive home page now accepts a public GitHub
+username and supported role, applies the same authentication and rate-limit policy as the API,
+starts one idempotent queue job, and redirects to an accessible progress page that refreshes into
+the final evidence report. Validation, access, queue, and request-limit failures render as inline
+HTML errors. If PostgreSQL contains an active analysis whose Redis job was lost, a duplicate
+request safely restores the missing job instead of leaving the report queued forever.
+
+**Done when:** the form-to-report path passes focused tests and a real Docker run completes a
+public GitHub analysis through PostgreSQL, Redis, RQ, and the report renderer.
+
 ## Test strategy
 
 - Unit tests: evidence rules and rubric matching.

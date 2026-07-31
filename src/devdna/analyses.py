@@ -42,19 +42,28 @@ async def find_active_analysis(
     )
 
 
-@router.post(
-    "",
-    response_model=AnalysisResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(authorize_analysis_creation)],
-)
-async def create_analysis(
+async def start_analysis(
     payload: AnalysisCreate,
-    session: SessionDependency,
-    queue: QueueDependency,
+    session: AsyncSession,
+    queue: Queue,
 ) -> AnalysisRun:
+    """Persist and enqueue one idempotent analysis request."""
     existing = await find_active_analysis(session, payload)
     if existing:
+        try:
+            queued_job = queue.fetch_job(existing.id)
+        except Exception as error:
+            logger.exception("Could not inspect queue job for analysis %s", existing.id)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Analysis queue unavailable",
+            ) from error
+        if queued_job is None:
+            existing.status = "queued"
+            existing.error_message = None
+            await session.commit()
+            await session.refresh(existing)
+            enqueue_analysis(queue, existing)
         return existing
 
     analysis = AnalysisRun(
@@ -75,6 +84,17 @@ async def create_analysis(
     await session.refresh(analysis)
 
     try:
+        enqueue_analysis(queue, analysis)
+    except HTTPException:
+        analysis.status = "failed"
+        analysis.error_message = "Analysis queue unavailable"
+        await session.commit()
+        raise
+    return analysis
+
+
+def enqueue_analysis(queue: Queue, analysis: AnalysisRun) -> None:
+    try:
         queue.enqueue(
             collect_profile_job,
             analysis.id,
@@ -85,15 +105,25 @@ async def create_analysis(
             retry=Retry(max=2, interval=[30, 120]),
         )
     except Exception as error:
-        analysis.status = "failed"
-        analysis.error_message = "Analysis queue unavailable"
-        await session.commit()
         logger.exception("Could not enqueue analysis %s", analysis.id)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Analysis queue unavailable",
         ) from error
-    return analysis
+
+
+@router.post(
+    "",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(authorize_analysis_creation)],
+)
+async def create_analysis(
+    payload: AnalysisCreate,
+    session: SessionDependency,
+    queue: QueueDependency,
+) -> AnalysisRun:
+    return await start_analysis(payload, session, queue)
 
 
 @router.get("/{analysis_id}", response_model=AnalysisResponse)
