@@ -1,3 +1,5 @@
+import json
+import re
 from collections.abc import Mapping
 from html import escape
 from pathlib import Path
@@ -74,6 +76,55 @@ def page_shell(title: str, content: str, refresh: bool = False) -> str:
 </html>"""
 
 
+def auth_script(clerk_key: str) -> str:
+    if not clerk_key:
+        return "<script>window.__DEVDNA_AUTH__ = { key: null };</script>"
+    safe_key = json.dumps(clerk_key)
+    return f"""<script>
+  window.__DEVDNA_AUTH__ = {{ key: {safe_key} }};
+  (function () {{
+    var key = window.__DEVDNA_AUTH__.key;
+    if (!key) return;
+    var script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js";
+    script.async = true;
+    script.onload = function () {{
+      if (!window.Clerk) return;
+      window.Clerk.load({{
+        publishableKey: key,
+        afterSignInUrl: "/app",
+        afterSignUpUrl: "/app",
+      }}).catch(function () {{}});
+      var buttons = document.querySelectorAll("[data-auth]");
+      buttons.forEach(function (button) {{
+        button.addEventListener("click", function () {{
+          var strategy = button.getAttribute("data-auth");
+          button.disabled = true;
+          var signIn = window.Clerk.signIn();
+          if (strategy === "email") {{
+            signIn.create({{ strategy: "password" }});
+          }} else {{
+            signIn.authenticateWithRedirect({{
+              strategy: "oauth", redirectUrl: "/", redirectUrlComplete: "/app"
+            }});
+          }}
+          window.Clerk.on("signInSuccess", async function () {{
+            var token = await window.Clerk.session.getToken();
+            await fetch("/auth/clerk", {{
+              method: "POST",
+              headers: {{ "Content-Type": "application/json" }},
+              body: JSON.stringify({{ token: token }}),
+            }});
+            window.location.href = "/app";
+          }});
+        }});
+      }});
+    }};
+    document.head.appendChild(script);
+  }})();
+</script>"""
+
+
 def home_response(
     *,
     access_required: bool,
@@ -81,29 +132,14 @@ def home_response(
     username: str = "",
     status_code: int = status.HTTP_200_OK,
     headers: Mapping[str, str] | None = None,
+    clerk_key: str = "",
 ) -> HTMLResponse:
-    error_markup = (
-        f'<p class="form-error" id="analysis-error" role="alert">{escape(error)}</p>'
-        if error
-        else ""
-    )
-    error_reference = ' aria-describedby="analysis-error"' if error else ""
-    access_field = (
-        f"""
-      <div class="field-group">
-        <label for="access_key">Access key</label>
-        <input id="access_key" name="access_key" type="password" required
-          autocomplete="current-password"{error_reference}>
-        <p class="field-help">Use the DevDNA access key provided to your team.</p>
-      </div>"""
-        if access_required
-        else ""
-    )
     content = f"""
 <main class="home-shell">
   <header class="home-nav">
     <div class="brand">DevDNA <span>Developer evidence</span></div>
     <nav class="home-links" aria-label="Primary navigation">
+      <a href="/app">Start</a>
       <a href="/history">History</a>
       <a href="/recruiter">Recruiter</a>
       <a href="/docs">API docs</a>
@@ -112,35 +148,26 @@ def home_response(
   <section class="home-hero">
     <div class="home-intro">
       <p class="eyebrow">Evidence-first developer intelligence</p>
-      <h1>See the work behind the profile.</h1>
-      <p>DevDNA turns public repository files into explainable skill evidence and
-        focused next steps.</p>
+      <h1>Turn your GitHub into a hiring signal.</h1>
+      <p>DevDNA reads your public repositories and tells you exactly what they
+        prove about your skills — and what they still lack for the role you want.</p>
+      <div class="hero-cta">
+        <a class="button button-primary" href="/app">Get your DevDNA report</a>
+        <a class="button button-secondary" href="/docs">Read the API docs</a>
+      </div>
     </div>
-    <form class="analysis-form" method="post" action="/analyses">
-      <div class="form-heading">
-        <h2>Analyze a developer</h2>
-        <p>Start with a public GitHub account.</p>
+    <div class="auth-panel">
+      <p class="eyebrow">Sign in to continue</p>
+      <h2 class="auth-title">Your profile, decoded.</h2>
+      <p class="auth-sub">Sign in with Google, GitHub, or email to unlock your
+        analysis dashboard.</p>
+      <div class="auth-actions">
+        <button class="auth-button" data-auth="google">Continue with Google</button>
+        <button class="auth-button" data-auth="github">Continue with GitHub</button>
+        <button class="auth-button" data-auth="email">Continue with email</button>
       </div>
-      {error_markup}
-      <div class="field-group">
-        <label for="github_username">GitHub username</label>
-        <div class="username-input">
-          <span aria-hidden="true">github.com/</span>
-          <input id="github_username" name="github_username" value="{escape(username, quote=True)}"
-            required maxlength="39" autocomplete="off" autocapitalize="none" spellcheck="false"
-            placeholder="octocat"{error_reference}>
-        </div>
-        <p class="field-help">Public repositories only. No GitHub password is required.</p>
-      </div>
-      <div class="field-group">
-        <label for="target_role">Target role</label>
-        <select id="target_role" name="target_role">
-          <option value="python_backend_developer">Python backend developer</option>
-        </select>
-      </div>
-      {access_field}
-      <button class="button button-primary form-submit" type="submit">Analyze profile</button>
-    </form>
+      <p class="auth-note">Public repositories only. No GitHub password required.</p>
+    </div>
   </section>
   <section class="home-workflow" aria-labelledby="workflow-title">
     <h2 id="workflow-title">From GitHub to a useful decision</h2>
@@ -159,10 +186,11 @@ def home_response(
       </li>
     </ol>
   </section>
-  <footer class="home-footer">
+    <footer class="home-footer">
     <p>Built for developers and hiring teams who need explainable signals.</p>
   </footer>
-</main>"""
+</main>
+{auth_script(clerk_key)}"""
     return HTMLResponse(
         page_shell("DevDNA evidence reports", content),
         status_code=status_code,
@@ -176,6 +204,76 @@ def rate_limit_headers(response: Response) -> dict[str, str]:
         for name, value in response.headers.items()
         if name.lower().startswith("x-ratelimit-") or name.lower() == "retry-after"
     }
+
+
+def dashboard_response(
+    *,
+    username: str = "",
+    action: str = "",
+    error: str | None = None,
+    clerk_key: str = "",
+    status_code: int = status.HTTP_200_OK,
+) -> HTMLResponse:
+    error_markup = (
+        f'<p class="form-error" role="alert">{escape(error)}</p>' if error else ""
+    )
+    actions = {
+        "profile": "Analyze my profile",
+        "readme": "Improve my README",
+        "role": "See where I stand for a role",
+        "gaps": "What my GitHub is lacking",
+    }
+    action_options = "".join(
+        f'<label class="action-option"><input type="radio" name="action" value="{key}"'
+        f'{" checked" if key == action else ""}><span>{label}</span></label>'
+        for key, label in actions.items()
+    )
+    content = f"""
+<main class="home-shell">
+  <header class="home-nav">
+    <div class="brand">DevDNA <span>Developer evidence</span></div>
+    <nav class="home-links" aria-label="Primary navigation">
+      <a href="/history">History</a>
+      <a href="/recruiter">Recruiter</a>
+      <form method="post" action="/session/logout" class="inline-form">
+        <button class="text-button" type="submit">Sign out</button>
+      </form>
+    </nav>
+  </header>
+  <section class="app-hero">
+    <div class="home-intro">
+      <p class="eyebrow">Your analysis dashboard</p>
+      <h1>What should we do with your GitHub?</h1>
+      <p>Paste a GitHub username and pick what you want to know.</p>
+    </div>
+    <form class="analysis-form" method="post" action="/app/analyze">
+      <div class="form-heading">
+        <h2>Choose an action</h2>
+        <p>Start with a public GitHub account.</p>
+      </div>
+      {error_markup}
+      <div class="field-group">
+        <label for="github_username">GitHub username</label>
+        <div class="username-input">
+          <span aria-hidden="true">github.com/</span>
+          <input id="github_username" name="github_username" value="{escape(username, quote=True)}"
+            required maxlength="39" autocomplete="off" autocapitalize="none" spellcheck="false"
+            placeholder="octocat">
+        </div>
+      </div>
+      <div class="field-group">
+        <label>What do you want to do?</label>
+        <div class="action-grid">{action_options}</div>
+      </div>
+      <button class="button button-primary form-submit" type="submit">Run analysis</button>
+    </form>
+  </section>
+</main>
+{auth_script(clerk_key)}"""
+    return HTMLResponse(
+        page_shell("DevDNA dashboard", content),
+        status_code=status_code,
+    )
 
 
 def render_pending_page(username: str, analysis_id: str, analysis_status: str) -> str:
@@ -717,7 +815,137 @@ def render_report_page(
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
-    return home_response(access_required=bool(request.app.state.api_credentials))
+    return home_response(
+        access_required=bool(request.app.state.api_credentials),
+        clerk_key=request.app.state.settings.clerk_publishable_key,
+    )
+
+
+@router.post("/auth/clerk", response_class=HTMLResponse)
+async def clerk_auth(request: Request) -> Response:
+    """Exchange a Clerk session token for a DevDNA web session cookie."""
+    from devdna.clerk import verify_clerk_token
+
+    try:
+        body = await request.body()
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    token = payload.get("token")
+    if not isinstance(token, str) or not token:
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+    claims = verify_clerk_token(token, request.app.state.settings)
+    if claims is None:
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+    clerk_sub = claims.get("sub", "user")
+    safe_client = re.sub(r"[^a-zA-Z0-9_-]", "", clerk_sub)[:48] or "clerk"
+    max_age = request.app.state.settings.web_session_hours * 3600
+    response = RedirectResponse(url="/app", status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie(
+        SESSION_COOKIE,
+        create_web_session(safe_client, request.app.state.web_session_secret, max_age),
+        max_age=max_age,
+        httponly=True,
+        secure=request.app.state.settings.environment in {"staging", "production"},
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@router.get("/app", response_class=HTMLResponse)
+async def app_dashboard(request: Request) -> HTMLResponse:
+    return dashboard_response(clerk_key=request.app.state.settings.clerk_publishable_key)
+
+
+@router.post("/app/analyze", response_class=HTMLResponse)
+async def app_analyze(request: Request, session: SessionDependency) -> Response:
+    if request.headers.get("content-type", "").split(";", 1)[0] != (
+        "application/x-www-form-urlencoded"
+    ):
+        return dashboard_response(
+            error="The form could not be read. Please submit it again.",
+            clerk_key=request.app.state.settings.clerk_publishable_key,
+        )
+    try:
+        fields = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
+    except UnicodeDecodeError:
+        return dashboard_response(
+            error="The form contains invalid text.",
+            clerk_key=request.app.state.settings.clerk_publishable_key,
+        )
+
+    username = fields.get("github_username", [""])[0].strip()
+    action = fields.get("action", [""])[0]
+    access_key = fields.get("access_key", [""])[0]
+    policy_response = Response()
+    authorization_header = f"Bearer {access_key}" if access_key else None
+    try:
+        await enforce_analysis_creation_access(request, policy_response, authorization_header)
+    except HTTPException as error:
+        return dashboard_response(
+            username=username,
+            action=action,
+            error=str(error.detail),
+            clerk_key=request.app.state.settings.clerk_publishable_key,
+            status_code=error.status_code,
+        )
+
+    try:
+        payload = AnalysisCreate.model_validate(
+            {"github_username": username, "target_role": "python_backend_developer"}
+        )
+    except ValidationError:
+        return dashboard_response(
+            username=username,
+            action=action,
+            error="Enter a valid GitHub username.",
+            clerk_key=request.app.state.settings.clerk_publishable_key,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+
+    try:
+        owner_id = request.state.api_client_id or "public"
+        analysis = await start_analysis(
+            payload,
+            session,
+            cast(Queue, request.app.state.queue),
+            owner_id,
+        )
+    except HTTPException as error:
+        return dashboard_response(
+            username=username,
+            action=action,
+            error=str(error.detail),
+            clerk_key=request.app.state.settings.clerk_publishable_key,
+        )
+
+    target = {
+        "readme": "readme",
+        "role": "learning",
+        "gaps": "",
+    }.get(action, "")
+    redirect = RedirectResponse(
+        url=f"/reports/{analysis.id}" + (f"/{target}" if target else ""),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    for name, value in rate_limit_headers(policy_response).items():
+        redirect.headers[name] = value
+    client_id = request.state.api_client_id
+    if client_id:
+        max_age = request.app.state.settings.web_session_hours * 3600
+        redirect.set_cookie(
+            SESSION_COOKIE,
+            create_web_session(client_id, request.app.state.web_session_secret, max_age),
+            max_age=max_age,
+            httponly=True,
+            secure=request.app.state.settings.environment in {"staging", "production"},
+            samesite="lax",
+            path="/",
+        )
+    return redirect
 
 
 @router.post("/analyses", response_class=HTMLResponse)

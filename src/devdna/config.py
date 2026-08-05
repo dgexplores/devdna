@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     api_keys: SecretStr | None = None
     web_session_secret: SecretStr | None = None
     web_session_hours: int = Field(default=8, ge=1, le=168)
+    clerk_publishable_key: str = ""
+    clerk_secret_key: SecretStr | None = None
+    clerk_jwks_url: str = ""
+    clerk_issuer: str = ""
+    clerk_webhook_secret: SecretStr | None = None
+    clerk_domain: str = "https://www.clerk.com"
     analysis_rate_limit: int = Field(default=10, ge=1, le=1000)
     analysis_rate_window_seconds: int = Field(default=60, ge=1, le=3600)
     max_request_bytes: int = Field(default=16_384, ge=1024, le=1_048_576)

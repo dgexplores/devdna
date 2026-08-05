@@ -24,3 +24,13 @@ services:
         sync: false
       - key: DEVDNA_GITHUB_TOKEN
         sync: false
+      - key: DEVDNA_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: DEVDNA_CLERK_SECRET_KEY
+        sync: false
+      - key: DEVDNA_CLERK_JWKS_URL
+        sync: false
+      - key: DEVDNA_CLERK_ISSUER
+        sync: false
+      - key: DEVDNA_CLERK_WEBHOOK_SECRET
+        sync: false

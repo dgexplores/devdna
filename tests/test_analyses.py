@@ -264,11 +264,12 @@ def test_web_form_starts_analysis_and_redirects_to_progress(tmp_path: Path) -> N
     client = create_test_client(tmp_path / "web-form.db", queue)
     try:
         home = client.get("/")
+        dashboard = client.get("/app")
         submitted = client.post(
-            "/analyses",
+            "/app/analyze",
             data={
                 "github_username": "Octocat",
-                "target_role": "python_backend_developer",
+                "action": "profile",
             },
             follow_redirects=False,
         )
@@ -277,7 +278,8 @@ def test_web_form_starts_analysis_and_redirects_to_progress(tmp_path: Path) -> N
         client.__exit__(None, None, None)
 
     assert home.status_code == 200
-    assert '<form class="analysis-form" method="post" action="/analyses">' in home.text
+    assert "Turn your GitHub into a hiring signal" in home.text
+    assert '<form class="analysis-form" method="post" action="/app/analyze">' in dashboard.text
     assert submitted.status_code == 303
     assert submitted.headers["location"].startswith("/reports/")
     assert submitted.headers["X-RateLimit-Remaining"] == "9"
@@ -447,10 +449,10 @@ def test_web_form_returns_inline_validation_error(tmp_path: Path) -> None:
     client = create_test_client(tmp_path / "web-form-invalid.db", FakeQueue())
     try:
         response = client.post(
-            "/analyses",
+            "/app/analyze",
             data={
                 "github_username": "-invalid--name",
-                "target_role": "python_backend_developer",
+                "action": "profile",
             },
         )
     finally:
@@ -459,7 +461,6 @@ def test_web_form_returns_inline_validation_error(tmp_path: Path) -> None:
     assert response.status_code == 422
     assert 'class="form-error"' in response.text
     assert "Enter a valid GitHub username" in response.text
-    assert 'aria-describedby="analysis-error"' in response.text
 
 
 def test_web_form_requires_configured_access_key(tmp_path: Path) -> None:
@@ -471,14 +472,17 @@ def test_web_form_requires_configured_access_key(tmp_path: Path) -> None:
     )
     payload = {
         "github_username": "octocat",
-        "target_role": "python_backend_developer",
+        "action": "profile",
     }
     try:
         home = client.get("/")
-        missing = client.post("/analyses", data=payload)
+        missing = client.post("/app/analyze", data=payload)
         allowed = client.post(
-            "/analyses",
-            data={**payload, "access_key": "developer.correct-horse-battery-staple"},
+            "/app/analyze",
+            data={
+                **payload,
+                "access_key": "developer.correct-horse-battery-staple",
+            },
             follow_redirects=False,
         )
         history = client.get("/history")
@@ -486,7 +490,7 @@ def test_web_form_requires_configured_access_key(tmp_path: Path) -> None:
     finally:
         client.__exit__(None, None, None)
 
-    assert 'type="password"' in home.text
+    assert "Continue with Google" in home.text
     assert missing.status_code == 401
     assert "Valid bearer API key required" in missing.text
     assert allowed.status_code == 303

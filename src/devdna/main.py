@@ -34,8 +34,12 @@ def add_security_headers(response: Response, path: str) -> None:
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     if path == "/" or path.startswith("/reports/"):
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; style-src 'self'; img-src 'self' data:; "
-            "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+            "default-src 'self'; script-src 'self' 'unsafe-inline' "
+            "https://cdn.jsdelivr.net; connect-src 'self' "
+            "https://*.clerk.accounts.dev https://clerk.com; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
+            "frame-src https://*.clerk.accounts.dev https://challenges.cloudflare.com; "
+            "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         )
 
 
