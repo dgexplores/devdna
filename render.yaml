@@ -3,7 +3,7 @@ services:
   - type: web
     name: devdna-api
     runtime: docker
-    repo: https://github.com/dgexplores/DevDNA.git
+    repo: https://github.com/dgexplores/DevDNAv2.git
     plan: free
     dockerContext: .
     dockerfilePath: Dockerfile
@@ -29,7 +29,7 @@ services:
   - type: worker
     name: devdna-worker
     runtime: docker
-    repo: https://github.com/dgexplores/DevDNA.git
+    repo: https://github.com/dgexplores/DevDNAv2.git
     plan: free
     dockerContext: .
     dockerfilePath: Dockerfile
@@ -50,7 +50,7 @@ services:
   - type: worker
     name: devdna-retention
     runtime: docker
-    repo: https://github.com/dgexplores/DevDNA.git
+    repo: https://github.com/dgexplores/DevDNAv2.git
     plan: free
     dockerContext: .
     dockerfilePath: Dockerfile
