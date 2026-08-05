@@ -8,7 +8,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 def _normalize_database_url(url: str) -> str:
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    url = url.split("?")[0]
+    if "sslmode=require" in url or "sslmode=true" in url:
+        url = url.split("?")[0] + "?ssl=require"
+    else:
+        url = url.split("?")[0]
     return url
 
 
