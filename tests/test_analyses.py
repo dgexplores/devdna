@@ -14,6 +14,13 @@ from devdna.main import create_app
 from devdna.models import AnalysisRun
 from devdna.reports import generate_report
 from devdna.schemas import EvidenceItem, EvidenceSnapshot, EvidenceSource
+from devdna.web_sessions import SESSION_COOKIE, create_web_session
+
+TEST_WEB_SESSION_SECRET = "devdna-local-session-secret-not-for-production"
+
+
+def web_session_cookie(client_id: str = "clerk_testuser") -> dict[str, str]:
+    return {SESSION_COOKIE: create_web_session(client_id, TEST_WEB_SESSION_SECRET, 3600)}
 
 
 class FakeQueue:
@@ -271,6 +278,7 @@ def test_web_form_starts_analysis_and_redirects_to_progress(tmp_path: Path) -> N
                 "github_username": "Octocat",
                 "action": "profile",
             },
+            cookies=web_session_cookie(),
             follow_redirects=False,
         )
         progress = client.get(submitted.headers["location"])
@@ -454,6 +462,7 @@ def test_web_form_returns_inline_validation_error(tmp_path: Path) -> None:
                 "github_username": "-invalid--name",
                 "action": "profile",
             },
+            cookies=web_session_cookie(),
         )
     finally:
         client.__exit__(None, None, None)
@@ -463,7 +472,7 @@ def test_web_form_returns_inline_validation_error(tmp_path: Path) -> None:
     assert "Enter a valid GitHub username" in response.text
 
 
-def test_web_form_requires_configured_access_key(tmp_path: Path) -> None:
+def test_web_form_requires_web_session(tmp_path: Path) -> None:
     queue = FakeQueue()
     client = create_test_client(
         tmp_path / "web-form-auth.db",
@@ -479,10 +488,8 @@ def test_web_form_requires_configured_access_key(tmp_path: Path) -> None:
         missing = client.post("/app/analyze", data=payload)
         allowed = client.post(
             "/app/analyze",
-            data={
-                **payload,
-                "access_key": "developer.correct-horse-battery-staple",
-            },
+            data=payload,
+            cookies=web_session_cookie(),
             follow_redirects=False,
         )
         history = client.get("/history")
@@ -492,9 +499,9 @@ def test_web_form_requires_configured_access_key(tmp_path: Path) -> None:
 
     assert "Continue with Google" in home.text
     assert missing.status_code == 401
-    assert "Valid bearer API key required" in missing.text
+    assert "Sign in with Clerk" in missing.text
     assert allowed.status_code == 303
-    assert "HttpOnly" in allowed.headers["set-cookie"]
+    assert allowed.headers["location"].startswith("/reports/")
     assert history.status_code == 200
     assert "octocat" in history.text
     assert logout.status_code == 303

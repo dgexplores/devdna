@@ -891,18 +891,34 @@ async def app_analyze(request: Request, session: SessionDependency) -> Response:
 
     username = fields.get("github_username", [""])[0].strip()
     action = fields.get("action", [""])[0]
-    access_key = fields.get("access_key", [""])[0]
-    policy_response = Response()
-    authorization_header = f"Bearer {access_key}" if access_key else None
-    try:
-        await enforce_analysis_creation_access(request, policy_response, authorization_header)
-    except HTTPException as error:
+    owner_id = verify_web_session(
+        request.cookies.get(SESSION_COOKIE),
+        request.app.state.web_session_secret,
+    )
+    if owner_id is None:
         return dashboard_response(
             username=username,
             action=action,
-            error=str(error.detail),
+            error="Sign in with Clerk before starting an analysis.",
             clerk_key=request.app.state.settings.clerk_publishable_key,
-            status_code=error.status_code,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+    request.state.api_client_id = owner_id
+    policy_response = Response()
+    current, ttl = await enforce_fixed_window(
+        request,
+        policy_response,
+        f"devdna:rate:analysis:client:{owner_id}",
+        request.app.state.settings.analysis_rate_limit,
+        request.app.state.settings.analysis_rate_window_seconds,
+    )
+    if current > request.app.state.settings.analysis_rate_limit:
+        return dashboard_response(
+            username=username,
+            action=action,
+            error="Analysis request limit exceeded. Please try again later.",
+            clerk_key=request.app.state.settings.clerk_publishable_key,
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
     try:
