@@ -9,7 +9,6 @@ services:
     dockerContext: .
     dockerfilePath: Dockerfile
     healthCheckPath: /health/ready
-    startCommand: sh scripts/start.sh
     envVars:
       - key: DEVDNA_ENVIRONMENT
         value: production
