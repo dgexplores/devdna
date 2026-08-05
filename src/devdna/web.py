@@ -88,35 +88,46 @@ def auth_script(clerk_key: str) -> str:
     var script = document.createElement("script");
     script.src = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js";
     script.async = true;
-    script.onload = function () {{
+    script.onload = async function () {{
       if (!window.Clerk) return;
-      window.Clerk.load({{
-        publishableKey: key,
-        afterSignInUrl: "/app",
-        afterSignUpUrl: "/app",
-      }}).catch(function () {{}});
+      var clerk = new window.Clerk(key);
+      try {{
+        await clerk.load({{ afterSignInUrl: "/app", afterSignUpUrl: "/app" }});
+      }} catch (e) {{
+        console.error("Clerk load failed", e);
+        return;
+      }}
+      if (clerk.user) {{
+        var token = await clerk.session.getToken();
+        await fetch("/auth/clerk", {{
+          method: "POST",
+          headers: {{ "Content-Type": "application/json" }},
+          body: JSON.stringify({{ token: token }}),
+        }});
+        if (window.location.pathname === "/") window.location.href = "/app";
+        return;
+      }}
+      clerk.addListener(function (payload) {{
+        if (!payload.signedIn) return;
+        clerk.session.getToken().then(function (token) {{
+          return fetch("/auth/clerk", {{
+            method: "POST",
+            headers: {{ "Content-Type": "application/json" }},
+            body: JSON.stringify({{ token: token }}),
+          }});
+        }}).then(function () {{
+          window.location.href = "/app";
+        }});
+      }});
       var buttons = document.querySelectorAll("[data-auth]");
       buttons.forEach(function (button) {{
         button.addEventListener("click", function () {{
-          var strategy = button.getAttribute("data-auth");
-          button.disabled = true;
-          var signIn = window.Clerk.signIn();
-          if (strategy === "email") {{
-            signIn.create({{ strategy: "password" }});
-          }} else {{
-            signIn.authenticateWithRedirect({{
-              strategy: "oauth", redirectUrl: "/", redirectUrlComplete: "/app"
-            }});
+          try {{
+            clerk.openSignIn();
+          }} catch (e) {{
+            console.error("Clerk sign-in failed", e);
+            button.disabled = false;
           }}
-          window.Clerk.on("signInSuccess", async function () {{
-            var token = await window.Clerk.session.getToken();
-            await fetch("/auth/clerk", {{
-              method: "POST",
-              headers: {{ "Content-Type": "application/json" }},
-              body: JSON.stringify({{ token: token }}),
-            }});
-            window.location.href = "/app";
-          }});
         }});
       }});
     }};
