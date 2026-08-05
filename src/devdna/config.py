@@ -5,6 +5,12 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _normalize_database_url(url: str) -> str:
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
+
+
 class Settings(BaseSettings):
     environment: Literal["development", "test", "staging", "production"] = "development"
     database_url: str = "postgresql+asyncpg://devdna:devdna@localhost:5432/devdna"
@@ -35,6 +41,9 @@ class Settings(BaseSettings):
         env_prefix="DEVDNA_",
         extra="ignore",
     )
+
+    def model_post_init(self, __context: object) -> None:
+        self.database_url = _normalize_database_url(self.database_url)
 
 
 @lru_cache
