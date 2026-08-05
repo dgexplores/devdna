@@ -90,9 +90,13 @@ def auth_script(clerk_key: str) -> str:
     script.async = true;
     script.onload = async function () {{
       if (!window.Clerk) return;
-      var clerk = new window.Clerk(key);
+      var clerk = window.Clerk;
       try {{
-        await clerk.load({{ afterSignInUrl: "/app", afterSignUpUrl: "/app" }});
+        await clerk.load({{
+          publishableKey: key,
+          afterSignInUrl: "/app",
+          afterSignUpUrl: "/app",
+        }});
       }} catch (e) {{
         console.error("Clerk load failed", e);
         return;
