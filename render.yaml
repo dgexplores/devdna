@@ -5,6 +5,7 @@ services:
     runtime: docker
     repo: https://github.com/dgexplores/DevDNAv2.git
     plan: free
+    region: oregon
     dockerContext: .
     dockerfilePath: Dockerfile
     healthCheckPath: /health/ready
@@ -24,43 +25,3 @@ services:
         sync: false
       - key: DEVDNA_GITHUB_TOKEN
         sync: false
-
-  # Long-running RQ worker.
-  - type: worker
-    name: devdna-worker
-    runtime: docker
-    repo: https://github.com/dgexplores/DevDNAv2.git
-    plan: free
-    dockerContext: .
-    dockerfilePath: Dockerfile
-    command: rq worker devdna --with-scheduler --url $DEVDNA_REDIS_URL
-    envVars:
-      - key: DEVDNA_ENVIRONMENT
-        value: production
-      - key: DEVDNA_DATABASE_URL
-        sync: false
-      - key: DEVDNA_REDIS_URL
-        sync: false
-      - key: DEVDNA_LOG_LEVEL
-        value: INFO
-      - key: DEVDNA_GITHUB_TOKEN
-        sync: false
-
-  # Daily retention: 90-day terminal-analysis cleanup.
-  - type: worker
-    name: devdna-retention
-    runtime: docker
-    repo: https://github.com/dgexplores/DevDNAv2.git
-    plan: free
-    dockerContext: .
-    dockerfilePath: Dockerfile
-    command: sh scripts/retention_loop.sh
-    envVars:
-      - key: DEVDNA_ENVIRONMENT
-        value: production
-      - key: DEVDNA_DATABASE_URL
-        sync: false
-      - key: DEVDNA_ANALYSIS_RETENTION_DAYS
-        value: "90"
-      - key: DEVDNA_RETENTION_BATCH_SIZE
-        value: "500"
