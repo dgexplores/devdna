@@ -35,7 +35,8 @@ def add_security_headers(response: Response, path: str) -> None:
     if path == "/" or path.startswith("/reports/"):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self' 'unsafe-inline' "
-            "https://cdn.jsdelivr.net; connect-src 'self' "
+            "https://cdn.jsdelivr.net; worker-src 'self' blob:; "
+            "connect-src 'self' "
             "https://*.clerk.accounts.dev https://clerk.com; "
             "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
             "frame-src https://*.clerk.accounts.dev https://challenges.cloudflare.com; "

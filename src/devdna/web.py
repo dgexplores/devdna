@@ -124,7 +124,7 @@ def auth_script(clerk_key: str) -> str:
       buttons.forEach(function (button) {{
         button.addEventListener("click", function () {{
           try {{
-            clerk.openSignIn();
+            clerk.redirectToSignIn();
           }} catch (e) {{
             console.error("Clerk sign-in failed", e);
             button.disabled = false;
