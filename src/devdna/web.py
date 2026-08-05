@@ -87,16 +87,13 @@ def auth_script(clerk_key: str) -> str:
     if (!key) return;
     var script = document.createElement("script");
     script.src = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js";
+    script.setAttribute("data-clerk-publishable-key", key);
     script.async = true;
     script.onload = async function () {{
       if (!window.Clerk) return;
       var clerk = window.Clerk;
       try {{
-        await clerk.load({{
-          publishableKey: key,
-          afterSignInUrl: "/app",
-          afterSignUpUrl: "/app",
-        }});
+        await clerk.load({{ afterSignInUrl: "/app", afterSignUpUrl: "/app" }});
       }} catch (e) {{
         console.error("Clerk load failed", e);
         return;
