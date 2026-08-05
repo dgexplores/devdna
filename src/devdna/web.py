@@ -76,7 +76,22 @@ def page_shell(title: str, content: str, refresh: bool = False) -> str:
 </html>"""
 
 
+def topbar_nav(brand_suffix: str, *, home_url: str = "/") -> str:
+    return f"""<header class="topbar">
+  <a class="brand" href="{escape(home_url, quote=True)}" aria-label="DevDNA home">
+    <span class="brand-mark">DNA</span>DevDNA <span>{escape(brand_suffix)}</span>
+  </a>
+  <nav class="home-links" aria-label="Primary navigation">
+    <a href="/app">Dashboard</a>
+    <a href="/history">History</a>
+    <a href="/recruiter">Recruiter</a>
+  </nav>
+</header>"""
+
+
 def auth_script(clerk_key: str) -> str:
+    """Load Clerk and render the embedded <SignIn/> component, then exchange the
+    resulting session token for a DevDNA web session cookie."""
     if not clerk_key:
         return "<script>window.__DEVDNA_AUTH__ = { key: null };</script>"
     safe_key = json.dumps(clerk_key)
@@ -98,38 +113,62 @@ def auth_script(clerk_key: str) -> str:
         console.error("Clerk load failed", e);
         return;
       }}
-      if (clerk.user) {{
-        var token = await clerk.session.getToken();
-        await fetch("/auth/clerk", {{
+      var exchange = function (token) {{
+        return fetch("/auth/clerk", {{
           method: "POST",
           headers: {{ "Content-Type": "application/json" }},
           body: JSON.stringify({{ token: token }}),
         }});
-        if (window.location.pathname === "/") window.location.href = "/app";
+      }};
+      var redirectToApp = function () {{
+        if (window.location.pathname !== "/app") window.location.href = "/app";
+      }};
+      if (clerk.user) {{
+        try {{
+          var token = await clerk.session.getToken();
+          await exchange(token);
+        }} finally {{
+          redirectToApp();
+        }}
         return;
+      }}
+      var host = document.getElementById("clerk-sign-in");
+      if (host && typeof clerk.mountSignIn === "function") {{
+        try {{
+          clerk.mountSignIn(host, {{
+            withSignUp: true,
+            fallbackRedirectUrl: "/app",
+            afterSignInUrl: "/app",
+            afterSignUpUrl: "/app",
+            routing: "hash",
+            appearance: {{
+              baseTheme: null,
+              variables: {{
+                colorPrimary: "#58a6ff",
+                colorBackground: "#11151c",
+                colorText: "#e6edf3",
+                colorTextSecondary: "#9aa7b7",
+                colorInputBackground: "#0a0c10",
+                colorInputText: "#e6edf3",
+                borderRadius: "8px",
+                fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+                fontFamilyButtons: "inherit"
+              }}
+            }}
+          }});
+        }} catch (e) {{
+          console.error("Clerk mountSignIn failed", e);
+          var note = document.createElement("p");
+          note.className = "form-error";
+          note.textContent = "Sign-in is unavailable. Please try again.";
+          host.appendChild(note);
+        }}
       }}
       clerk.addListener(function (payload) {{
         if (!payload.signedIn) return;
         clerk.session.getToken().then(function (token) {{
-          return fetch("/auth/clerk", {{
-            method: "POST",
-            headers: {{ "Content-Type": "application/json" }},
-            body: JSON.stringify({{ token: token }}),
-          }});
-        }}).then(function () {{
-          window.location.href = "/app";
-        }});
-      }});
-      var buttons = document.querySelectorAll("[data-auth]");
-      buttons.forEach(function (button) {{
-        button.addEventListener("click", function () {{
-          try {{
-            clerk.redirectToSignIn();
-          }} catch (e) {{
-            console.error("Clerk sign-in failed", e);
-            button.disabled = false;
-          }}
-        }});
+          return exchange(token);
+        }}).then(redirectToApp);
       }});
     }};
     document.head.appendChild(script);
@@ -145,17 +184,22 @@ def home_response(
     status_code: int = status.HTTP_200_OK,
     headers: Mapping[str, str] | None = None,
     clerk_key: str = "",
+    authenticated: bool = False,
 ) -> HTMLResponse:
+    error_markup = f'<p class="form-error" role="alert">{escape(error)}</p>' if error else ""
     content = f"""
 <main class="home-shell">
   <header class="home-nav">
-    <div class="brand">DevDNA <span>Developer evidence</span></div>
-    <nav class="home-links" aria-label="Primary navigation">
-      <a href="/app">Start</a>
-      <a href="/history">History</a>
-      <a href="/recruiter">Recruiter</a>
-      <a href="/docs">API docs</a>
-    </nav>
+    <div class="home-nav-inner home-nav">
+      <a class="brand" href="/" aria-label="DevDNA home">
+        <span class="brand-mark">DNA</span>DevDNA <span>developer evidence</span>
+      </a>
+      <nav class="home-links" aria-label="Primary navigation">
+        <a href="/history">History</a>
+        <a href="/recruiter">Recruiter</a>
+        <a href="/docs">API docs</a>
+      </nav>
+    </div>
   </header>
   <section class="home-hero">
     <div class="home-intro">
@@ -168,21 +212,40 @@ def home_response(
         <a class="button button-secondary" href="/docs">Read the API docs</a>
       </div>
     </div>
-    <div class="auth-panel">
-      <p class="eyebrow">Sign in to continue</p>
-      <h2 class="auth-title">Your profile, decoded.</h2>
-      <p class="auth-sub">Sign in with Google, GitHub, or email to unlock your
-        analysis dashboard.</p>
-      <div class="auth-actions">
-        <button class="auth-button" data-auth="google">Continue with Google</button>
-        <button class="auth-button" data-auth="github">Continue with GitHub</button>
-        <button class="auth-button" data-auth="email">Continue with email</button>
+    <aside class="auth-panel" aria-label="Sign in">
+      <div class="auth-head">
+        <p class="eyebrow">Sign in to continue</p>
+        <h2 class="auth-title">Your profile, decoded.</h2>
+        <p class="auth-sub">Sign in with Google, GitHub, or email to unlock your
+          analysis dashboard.</p>
       </div>
+      {error_markup}
+      <div id="clerk-sign-in" class="clerk-signin" aria-label="Clerk sign in"></div>
       <p class="auth-note">Public repositories only. No GitHub password required.</p>
-    </div>
+    </aside>
+  </section>
+  <section class="home-features" aria-label="What DevDNA does">
+    <article class="feature-card">
+      <div class="feature-icon" aria-hidden="true">01</div>
+      <h3>Inspect repositories</h3>
+      <p>Read public source, tests, documentation, and delivery files.</p>
+    </article>
+    <article class="feature-card">
+      <div class="feature-icon" aria-hidden="true">02</div>
+      <h3>Verify evidence</h3>
+      <p>Match concrete artifacts to a role-specific engineering rubric.</p>
+    </article>
+    <article class="feature-card">
+      <div class="feature-icon" aria-hidden="true">03</div>
+      <h3>Explain the result</h3>
+      <p>Show strengths, gaps, sources, and prioritized recommendations.</p>
+    </article>
   </section>
   <section class="home-workflow" aria-labelledby="workflow-title">
-    <h2 id="workflow-title">From GitHub to a useful decision</h2>
+    <div class="section-heading">
+      <h2 id="workflow-title">From GitHub to a useful decision</h2>
+      <p>Every claim links to the exact public file that backs it up.</p>
+    </div>
     <ol>
       <li>
         <strong>Inspect repositories</strong>
@@ -198,8 +261,9 @@ def home_response(
       </li>
     </ol>
   </section>
-    <footer class="home-footer">
+  <footer class="home-footer">
     <p>Built for developers and hiring teams who need explainable signals.</p>
+    <p>Commits, streaks, stars, and followers are not treated as engineering evidence.</p>
   </footer>
 </main>
 {auth_script(clerk_key)}"""
@@ -225,6 +289,7 @@ def dashboard_response(
     error: str | None = None,
     clerk_key: str = "",
     status_code: int = status.HTTP_200_OK,
+    authenticated: bool = False,
 ) -> HTMLResponse:
     error_markup = (
         f'<p class="form-error" role="alert">{escape(error)}</p>' if error else ""
@@ -240,21 +305,37 @@ def dashboard_response(
         f'{" checked" if key == action else ""}><span>{label}</span></label>'
         for key, label in actions.items()
     )
+    sign_out = (
+        """
+      <form method="post" action="/session/logout" class="inline-form">
+        <button class="text-button" type="submit">Sign out</button>
+      </form>"""
+        if authenticated
+        else ""
+    )
+    user_badge = (
+        '<span class="app-user"><span class="dot" aria-hidden="true"></span>Signed in</span>'
+        if authenticated
+        else ""
+    )
     content = f"""
 <main class="home-shell">
   <header class="home-nav">
-    <div class="brand">DevDNA <span>Developer evidence</span></div>
-    <nav class="home-links" aria-label="Primary navigation">
-      <a href="/history">History</a>
-      <a href="/recruiter">Recruiter</a>
-      <form method="post" action="/session/logout" class="inline-form">
-        <button class="text-button" type="submit">Sign out</button>
-      </form>
-    </nav>
+    <div class="home-nav-inner home-nav">
+      <a class="brand" href="/" aria-label="DevDNA home">
+        <span class="brand-mark">DNA</span>DevDNA <span>developer evidence</span>
+      </a>
+      <nav class="home-links" aria-label="Primary navigation">
+        <a href="/history">History</a>
+        <a href="/recruiter">Recruiter</a>
+        {sign_out}
+      </nav>
+    </div>
   </header>
   <section class="app-hero">
-    <div class="home-intro">
+    <div class="app-intro">
       <p class="eyebrow">Your analysis dashboard</p>
+      {user_badge}
       <h1>What should we do with your GitHub?</h1>
       <p>Paste a GitHub username and pick what you want to know.</p>
     </div>
@@ -290,8 +371,8 @@ def dashboard_response(
 
 def render_pending_page(username: str, analysis_id: str, analysis_status: str) -> str:
     content = f"""
+{topbar_nav("Developer evidence")}
 <main class="pending-shell">
-  <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>Developer evidence</span></a>
   <section class="pending-panel" aria-live="polite" aria-busy="true">
     <div class="pending-signal" aria-hidden="true"><span></span><span></span><span></span></div>
     <p class="eyebrow">Analysis {escape(analysis_status)}</p>
@@ -381,13 +462,7 @@ def render_readme_page(username: str, analysis_id: str, draft: ReadmeDraft) -> s
         else '<p class="empty-note">No repository has verified role evidence yet.</p>'
     )
     content = f"""
-<header class="topbar">
-  <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>README studio</span></a>
-  <a class="button button-secondary button-compact"
-    href="/reports/{escape(analysis_id, quote=True)}">
-    Back to report
-  </a>
-</header>
+{topbar_nav("README studio")}
 <main class="readme-shell">
   <section class="readme-hero">
     <div>
@@ -396,6 +471,10 @@ def render_readme_page(username: str, analysis_id: str, draft: ReadmeDraft) -> s
       <p>Built from {escape(username)}’s verified project evidence and current improvement plan.</p>
     </div>
     <div class="readme-actions">
+      <a class="button button-secondary"
+        href="/reports/{escape(analysis_id, quote=True)}">
+        Back to report
+      </a>
       <a class="button button-primary" href="/reports/{escape(analysis_id, quote=True)}/readme.md">
         Download Markdown
       </a>
@@ -472,16 +551,16 @@ def render_cv_alignment_page(
 ) -> str:
     guidance = "".join(f"<li>{escape(item)}</li>" for item in alignment.guidance)
     content = f"""
-<header class="topbar">
-  <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>CV evidence check</span></a>
-  <a class="button button-secondary button-compact"
-    href="/reports/{escape(analysis_id, quote=True)}/readme">Back to README studio</a>
-</header>
+{topbar_nav("CV evidence check")}
 <main class="cv-alignment-shell">
   <section class="cv-result-hero">
     <p class="eyebrow">{escape(alignment.source_filename)}</p>
     <h1>CV claims, checked against {escape(username)}’s GitHub evidence.</h1>
     <p>{escape(alignment.suggested_summary)}</p>
+    <div class="readme-actions">
+      <a class="button button-secondary"
+        href="/reports/{escape(analysis_id, quote=True)}/readme">Back to README studio</a>
+    </div>
   </section>
   <section class="cv-groups" aria-label="CV skill alignment">
     <article class="cv-group verified">
@@ -550,17 +629,17 @@ def render_learning_page(username: str, analysis_id: str, plan: LearningPlan) ->
         "for every requirement.</p>"
     )
     content = f"""
-<header class="topbar">
-  <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>Learning plan</span></a>
-  <a class="button button-secondary button-compact"
-    href="/reports/{escape(analysis_id, quote=True)}">Back to report</a>
-</header>
+{topbar_nav("Learning plan")}
 <main class="learning-shell">
   <section class="learning-hero">
     <p class="eyebrow">Python backend developer</p>
     <h1>Learn what your portfolio cannot prove yet.</h1>
     <p>A practical sequence for {escape(username)}, grounded in role gaps and
       dated market signals.</p>
+    <div class="readme-actions">
+      <a class="button button-secondary"
+        href="/reports/{escape(analysis_id, quote=True)}">Back to report</a>
+    </div>
   </section>
   <section class="learning-section" aria-labelledby="role-learning-title">
     <div class="section-heading">
@@ -625,9 +704,14 @@ def render_history_page(analyses: list[AnalysisRun], authenticated: bool) -> str
     )
     content = f"""
 <main class="history-shell">
-  <header class="home-nav">
-    <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>Analysis history</span></a>
-    {sign_out}
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="DevDNA home">
+      <span class="brand-mark">DNA</span>DevDNA <span>Analysis history</span>
+    </a>
+    <div class="topbar-actions">
+      <a class="nav-link" href="/app">Dashboard</a>
+      {sign_out}
+    </div>
   </header>
   <section class="history-hero">
     <p class="eyebrow">Saved requests</p>
@@ -642,11 +726,8 @@ def render_history_page(analyses: list[AnalysisRun], authenticated: bool) -> str
 def render_recruiter_home(error: str | None = None) -> str:
     error_markup = f'<p class="form-error" role="alert">{escape(error)}</p>' if error else ""
     content = f"""
+{topbar_nav("Recruiter workspace")}
 <main class="recruiter-shell">
-  <header class="home-nav">
-    <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>Recruiter workspace</span></a>
-    <a class="button button-secondary button-compact" href="/history">History</a>
-  </header>
   <section class="recruiter-hero">
     <div>
       <p class="eyebrow">Evidence comparison</p>
@@ -712,16 +793,16 @@ def render_recruiter_batch(batch: RecruiterBatchResponse) -> str:
     pending = any(item.status in {"queued", "running"} for item in batch.candidates)
     cards = "".join(render_candidate(item) for item in batch.candidates)
     content = f"""
-<header class="topbar">
-  <a class="brand" href="/recruiter">DevDNA <span>Candidate comparison</span></a>
-  <a class="button button-secondary button-compact" href="/recruiter">New batch</a>
-</header>
+{topbar_nav("Candidate comparison")}
 <main class="candidate-shell">
   <section class="candidate-hero">
     <p class="eyebrow">Python backend developer</p>
     <h1>Evidence comparison.</h1>
     <p>{len(batch.candidates)} candidates from {escape(batch.source_filename)}. Ranked only by
       verified coverage of this role rubric.</p>
+    <div class="readme-actions">
+      <a class="button button-secondary" href="/recruiter">New batch</a>
+    </div>
   </section>
   <aside class="human-review-note">
     <strong>Human review required</strong>
@@ -766,11 +847,7 @@ def render_report_page(
     )
 
     content = f"""
-<header class="topbar">
-  <a class="brand" href="/" aria-label="DevDNA home">DevDNA <span>Developer evidence</span></a>
-  <a class="button button-secondary button-compact"
-    href="/v1/analyses/{escape(analysis_id, quote=True)}/report">Open JSON</a>
-</header>
+{topbar_nav("Developer evidence")}
 <main class="report-shell">
   <section class="report-hero">
     <div class="hero-content">
@@ -780,6 +857,10 @@ def render_report_page(
         A source-backed view of <strong>{escape(username)}</strong>: verified skills,
         evidence gaps, and the next useful work.
       </p>
+      <div class="readme-actions">
+        <a class="button button-secondary"
+          href="/v1/analyses/{escape(analysis_id, quote=True)}/report">Open JSON</a>
+      </div>
     </div>
     <div class="coverage-block" aria-label="Rubric coverage">
       <div class="coverage-score">
@@ -869,17 +950,30 @@ async def clerk_auth(request: Request) -> Response:
 
 @router.get("/app", response_class=HTMLResponse)
 async def app_dashboard(request: Request) -> HTMLResponse:
-    return dashboard_response(clerk_key=request.app.state.settings.clerk_publishable_key)
+    owner_id = verify_web_session(
+        request.cookies.get(SESSION_COOKIE),
+        request.app.state.web_session_secret,
+    )
+    return dashboard_response(
+        clerk_key=request.app.state.settings.clerk_publishable_key,
+        authenticated=owner_id is not None,
+    )
 
 
 @router.post("/app/analyze", response_class=HTMLResponse)
 async def app_analyze(request: Request, session: SessionDependency) -> Response:
+    owner_id = verify_web_session(
+        request.cookies.get(SESSION_COOKIE),
+        request.app.state.web_session_secret,
+    )
+    authenticated = owner_id is not None
     if request.headers.get("content-type", "").split(";", 1)[0] != (
         "application/x-www-form-urlencoded"
     ):
         return dashboard_response(
             error="The form could not be read. Please submit it again.",
             clerk_key=request.app.state.settings.clerk_publishable_key,
+            authenticated=authenticated,
         )
     try:
         fields = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
@@ -887,14 +981,11 @@ async def app_analyze(request: Request, session: SessionDependency) -> Response:
         return dashboard_response(
             error="The form contains invalid text.",
             clerk_key=request.app.state.settings.clerk_publishable_key,
+            authenticated=authenticated,
         )
 
     username = fields.get("github_username", [""])[0].strip()
     action = fields.get("action", [""])[0]
-    owner_id = verify_web_session(
-        request.cookies.get(SESSION_COOKIE),
-        request.app.state.web_session_secret,
-    )
     if owner_id is None:
         return dashboard_response(
             username=username,
@@ -919,6 +1010,7 @@ async def app_analyze(request: Request, session: SessionDependency) -> Response:
             error="Analysis request limit exceeded. Please try again later.",
             clerk_key=request.app.state.settings.clerk_publishable_key,
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            authenticated=authenticated,
         )
 
     try:
@@ -932,6 +1024,7 @@ async def app_analyze(request: Request, session: SessionDependency) -> Response:
             error="Enter a valid GitHub username.",
             clerk_key=request.app.state.settings.clerk_publishable_key,
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            authenticated=authenticated,
         )
 
     try:
@@ -948,6 +1041,7 @@ async def app_analyze(request: Request, session: SessionDependency) -> Response:
             action=action,
             error=str(error.detail),
             clerk_key=request.app.state.settings.clerk_publishable_key,
+            authenticated=authenticated,
         )
 
     target = {

@@ -32,13 +32,15 @@ def add_security_headers(response: Response, path: str) -> None:
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    if path == "/" or path.startswith("/reports/"):
+    if path in {"/", "/app", "/history", "/recruiter"} or path.startswith("/reports/"):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self' 'unsafe-inline' "
             "https://cdn.jsdelivr.net; worker-src 'self' blob:; "
             "connect-src 'self' "
             "https://*.clerk.accounts.dev https://clerk.com; "
-            "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "img-src 'self' data: https:; "
             "frame-src https://*.clerk.accounts.dev https://challenges.cloudflare.com; "
             "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         )

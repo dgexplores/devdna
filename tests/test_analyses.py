@@ -497,7 +497,7 @@ def test_web_form_requires_web_session(tmp_path: Path) -> None:
     finally:
         client.__exit__(None, None, None)
 
-    assert "Continue with Google" in home.text
+    assert "id=\"clerk-sign-in\"" in home.text
     assert missing.status_code == 401
     assert "Sign in with Clerk" in missing.text
     assert allowed.status_code == 303
