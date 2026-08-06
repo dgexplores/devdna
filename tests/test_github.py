@@ -12,6 +12,7 @@ from devdna.github import (
     GitHubRateLimited,
     GitHubTransientError,
     GitHubUserNotFound,
+    aggregate_contributions,
     select_repositories,
 )
 from devdna.schemas import GitHubRepository
@@ -148,6 +149,8 @@ def test_get_snapshot_paginates_until_it_finds_eligible_repositories() -> None:
     def handler(request: httpx2.Request) -> httpx2.Response:
         if request.url.path == "/users/octocat":
             return httpx2.Response(200, json=PROFILE)
+        if request.url.path == "/users/octocat/events/public":
+            return httpx2.Response(200, json=[])
         if request.url.path == "/repos/octocat/new/git/trees/main":
             return httpx2.Response(200, json={"tree": [], "truncated": False})
         if request.url.params.get("page") == "2":
@@ -190,6 +193,8 @@ test = ["pytest>=8"]
     def handler(request: httpx2.Request) -> httpx2.Response:
         if request.url.path == "/users/octocat":
             return httpx2.Response(200, json=PROFILE)
+        if request.url.path == "/users/octocat/events/public":
+            return httpx2.Response(200, json=[])
         if request.url.path == "/users/octocat/repos":
             return httpx2.Response(200, json=[REPOSITORY])
         if request.url.path == "/repos/octocat/project/git/trees/main":
@@ -319,3 +324,47 @@ def test_repository_selection_filters_and_caps_results() -> None:
     assert len(selected) == 10
     assert selected[0].name == "project-11"
     assert all(repository.name != "empty" for repository in selected)
+
+
+def test_aggregate_contributions_counts_own_and_open_source_activity() -> None:
+    events = [
+        {
+            "type": "PushEvent",
+            "repo": {"name": "octocat/project"},
+            "created_at": "2026-07-01T10:00:00Z",
+        },
+        {
+            "type": "PushEvent",
+            "repo": {"name": "octocat/project"},
+            "created_at": "2026-07-02T10:00:00Z",
+        },
+        {
+            "type": "PullRequestEvent",
+            "repo": {"name": "other/opensource"},
+            "created_at": "2026-07-03T10:00:00Z",
+        },
+        {
+            "type": "ForkEvent",
+            "repo": {"name": "third/repo"},
+            "created_at": "2026-07-04T10:00:00Z",
+        },
+    ]
+
+    result = aggregate_contributions(events, "octocat", 42, 123456)
+
+    assert result.push_events == 2
+    assert result.pull_request_events == 1
+    assert result.distinct_repositories == 3
+    assert result.open_source_events == 1
+    assert result.open_source_repositories == ["other/opensource"]
+    assert result.days_span == 3
+    assert result.rate_limit_remaining == 42
+    assert len(result.weekly) == 4
+
+
+def test_aggregate_contributions_returns_none_when_empty() -> None:
+    result = GitHubClient(settings(), httpx2.MockTransport(lambda r: httpx2.Response(404))).get_contributions(
+        "octocat"
+    )
+
+    assert asyncio.run(result) is None

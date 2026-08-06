@@ -90,7 +90,7 @@ def test_collect_profile_completes_analysis(tmp_path: Path) -> None:
             assert result.profile_snapshot["profile"]["login"] == "octocat"
             assert result.profile_snapshot["repositories"][0]["name"] == "project"
             assert result.evidence_snapshot is not None
-            assert result.evidence_snapshot["analyzer_version"] == ("python-backend-evidence-v1")
+            assert result.evidence_snapshot["analyzer_version"] == ("evidence-v1")
             assert result.evidence_snapshot["items"][0]["key"] == "python.project"
             assert result.report_snapshot is not None
             assert result.report_snapshot["report_version"] == "python-backend-report-v1"

@@ -690,7 +690,7 @@ def test_get_analysis_exposes_partial_result(tmp_path: Path) -> None:
                 analysis.profile_snapshot = {"profile": {"login": "octocat"}}
                 analysis.evidence_snapshot = {
                     "schema_version": "1",
-                    "analyzer_version": "python-backend-evidence-v1",
+                    "analyzer_version": "evidence-v1",
                     "target_role": "python_backend_developer",
                     "rubric_version": "python_backend_developer:v1",
                     "repositories_analyzed": 0,
@@ -721,7 +721,7 @@ def test_get_analysis_exposes_partial_result(tmp_path: Path) -> None:
     assert response.json()["status"] == "partial"
     assert response.json()["profile_snapshot"]["profile"]["login"] == "octocat"
     assert response.json()["evidence_snapshot"]["analyzer_version"] == (
-        "python-backend-evidence-v1"
+        "evidence-v1"
     )
     assert response.json()["error_message"] == "Repository collection failed"
     assert report_response.status_code == 200

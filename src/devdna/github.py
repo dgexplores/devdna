@@ -4,6 +4,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any, Protocol
 from urllib.parse import quote, urlencode
@@ -13,6 +14,8 @@ import httpx2
 from devdna.config import Settings
 from devdna.evidence import extract_dependencies
 from devdna.schemas import (
+    ContributionWeek,
+    GitHubContributions,
     GitHubProfile,
     GitHubRepository,
     GitHubSnapshot,
@@ -21,6 +24,8 @@ from devdna.schemas import (
 
 MAX_REPOSITORIES = 10
 MAX_REPOSITORY_PAGES = 3
+MAX_EVENT_PAGES = 3
+MAX_EVENTS = 300
 CACHE_TTL_SECONDS = 86400
 MAX_TREE_ENTRIES = 5000
 MAX_MANIFESTS_PER_REPOSITORY = 2
@@ -31,6 +36,7 @@ MANIFEST_NAMES = {
     "requirements-dev.txt",
     "requirements.txt",
 }
+CONTRIBUTIONS_SCHEMA_VERSION = "1"
 
 
 class GitHubUserNotFound(Exception):
@@ -138,6 +144,103 @@ def summarize_warnings(warnings: list[str]) -> str:
     if len(warnings) > len(visible):
         visible.append(f"{len(warnings) - len(visible)} additional repository inspections failed")
     return "; ".join(visible)
+
+
+def aggregate_contributions(
+    events: list[dict[str, Any]],
+    username: str,
+    rate_limit_remaining: int | None = None,
+    rate_limit_reset: int | None = None,
+) -> GitHubContributions:
+    push_events = 0
+    pull_request_events = 0
+    distinct_repositories: set[str] = set()
+    open_source_repositories: set[str] = set()
+    open_source_events = 0
+    weekly: dict[str, dict[str, int]] = {}
+    created_at: list[datetime] = []
+
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        event_type = event.get("type")
+        repo = event.get("repo")
+        repo_name = repo.get("name") if isinstance(repo, dict) else None
+        if not isinstance(repo_name, str) or "/" not in repo_name:
+            continue
+        created = event.get("created_at")
+        created_dt: datetime | None = None
+        if isinstance(created, str):
+            try:
+                created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            except ValueError:
+                created_dt = None
+        if event_type == "PushEvent":
+            push_events += 1
+            distinct_repositories.add(repo_name)
+            owner = repo_name.split("/", 1)[0]
+            if owner.lower() != username.lower():
+                open_source_events += 1
+                open_source_repositories.add(repo_name)
+        elif event_type in {"PullRequestEvent", "PullRequestReviewEvent"}:
+            pull_request_events += 1
+            distinct_repositories.add(repo_name)
+            owner = repo_name.split("/", 1)[0]
+            if owner.lower() != username.lower():
+                open_source_events += 1
+                open_source_repositories.add(repo_name)
+        elif event_type == "ForkEvent":
+            distinct_repositories.add(repo_name)
+        if created_dt is not None:
+            created_at.append(created_dt)
+            week_key = created_dt.strftime("%Y-%m-%d")
+            week = weekly.setdefault(week_key, {"push": 0, "pr": 0})
+            if event_type == "PushEvent":
+                week["push"] += 1
+            elif event_type in {"PullRequestEvent", "PullRequestReviewEvent"}:
+                week["pr"] += 1
+
+    if not created_at:
+        return GitHubContributions(
+            schema_version=CONTRIBUTIONS_SCHEMA_VERSION,
+            sample_start=datetime.now(UTC),
+            sample_end=datetime.now(UTC),
+            days_span=0,
+            total_events=len(events),
+            push_events=push_events,
+            pull_request_events=pull_request_events,
+            distinct_repositories=len(distinct_repositories),
+            open_source_repositories=sorted(open_source_repositories),
+            open_source_events=open_source_events,
+            rate_limit_remaining=rate_limit_remaining,
+            rate_limit_reset=rate_limit_reset,
+        )
+
+    sample_start = min(created_at)
+    sample_end = max(created_at)
+    weeks = [
+        ContributionWeek(
+            week_start=week,
+            push_count=counts["push"],
+            pull_request_count=counts["pr"],
+        )
+        for week, counts in sorted(weekly.items())
+    ]
+    return GitHubContributions(
+        schema_version=CONTRIBUTIONS_SCHEMA_VERSION,
+        sample_start=sample_start,
+        sample_end=sample_end,
+        days_span=max(1, (sample_end - sample_start).days),
+        total_events=len(events),
+        push_events=push_events,
+        pull_request_events=pull_request_events,
+        distinct_repositories=len(distinct_repositories),
+        open_source_repositories=sorted(open_source_repositories),
+        open_source_events=open_source_events,
+        weekly=weeks,
+        rate_limit_remaining=rate_limit_remaining,
+        rate_limit_reset=rate_limit_reset,
+    )
 
 
 class GitHubClient:
@@ -428,6 +531,45 @@ class GitHubClient:
 
         return inspections, warnings, remaining, reset
 
+    async def get_contributions(
+        self,
+        username: str,
+    ) -> GitHubContributions | None:
+        """Aggregate recent public activity (commits, PRs, forks) for the user.
+
+        Returns None when the user has no public event feed or events are
+        unavailable, so contribution data never fails an analysis.
+        """
+        events: list[dict[str, Any]] = []
+        remaining: int | None = None
+        reset: int | None = None
+        next_url: str | None = f"/users/{quote(username, safe='')}/events/public"
+        params: dict[str, str | int] | None = {"per_page": 100}
+
+        async with self.client() as client:
+            for _ in range(MAX_EVENT_PAGES):
+                if next_url is None or len(events) >= MAX_EVENTS:
+                    break
+                try:
+                    response = await self.get_json(client, next_url, username, params)
+                except (GitHubRateLimited, GitHubTransientError, GitHubUserNotFound):
+                    break
+                except httpx2.HTTPStatusError:
+                    break
+                body = response.body
+                if not isinstance(body, list):
+                    break
+                events.extend(body)
+                remaining = response.rate_limit_remaining
+                reset = response.rate_limit_reset
+                next_url = next_link(response.link)
+                params = None
+
+        if not events:
+            return None
+        return aggregate_contributions(events, username, remaining, reset)
+
+
     async def get_snapshot(self, username: str) -> GitHubSnapshot:
         snapshot = await self.get_profile(username)
         try:
@@ -437,6 +579,7 @@ class GitHubClient:
                 GitHubSnapshot(
                     profile=snapshot.profile,
                     repositories=error.repositories,
+                    contributions=await self.get_contributions(username),
                     rate_limit_remaining=error.rate_limit_remaining
                     if error.rate_limit_remaining is not None
                     else snapshot.rate_limit_remaining,
@@ -446,6 +589,7 @@ class GitHubClient:
                 ),
                 error.warning,
             ) from error
+        contributions = await self.get_contributions(username)
         (
             inspections,
             warnings,
@@ -470,6 +614,7 @@ class GitHubClient:
             profile=snapshot.profile,
             repositories=repositories,
             inspections=inspections,
+            contributions=contributions,
             rate_limit_remaining=final_remaining,
             rate_limit_reset=final_reset,
         )

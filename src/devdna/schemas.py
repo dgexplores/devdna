@@ -6,11 +6,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 AnalysisStatus = Literal["queued", "running", "completed", "partial", "failed"]
+SupportedRole = Literal[
+    "python_backend_developer",
+    "frontend_developer",
+    "devops_engineer",
+]
 
 
 class AnalysisCreate(BaseModel):
     github_username: str
-    target_role: Literal["python_backend_developer"]
+    target_role: SupportedRole = "python_backend_developer"
 
     @field_validator("github_username")
     @classmethod
@@ -82,10 +87,33 @@ class RepositoryInspection(BaseModel):
     dependencies: list[str] = Field(default_factory=list)
 
 
+class ContributionWeek(BaseModel):
+    week_start: str
+    push_count: int
+    pull_request_count: int
+
+
+class GitHubContributions(BaseModel):
+    schema_version: str
+    sample_start: datetime
+    sample_end: datetime
+    days_span: int
+    total_events: int
+    push_events: int
+    pull_request_events: int
+    distinct_repositories: int
+    open_source_repositories: list[str] = Field(default_factory=list)
+    open_source_events: int
+    weekly: list[ContributionWeek] = Field(default_factory=list)
+    rate_limit_remaining: int | None = None
+    rate_limit_reset: int | None = None
+
+
 class GitHubSnapshot(BaseModel):
     profile: GitHubProfile
     repositories: list[GitHubRepository] = Field(default_factory=list)
     inspections: list[RepositoryInspection] = Field(default_factory=list)
+    contributions: GitHubContributions | None = None
     rate_limit_remaining: int | None
     rate_limit_reset: int | None
 

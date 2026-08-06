@@ -29,11 +29,13 @@ from devdna.learning import generate_learning_plan
 from devdna.models import AnalysisRun, RecruiterBatch
 from devdna.readme import generate_profile_readme
 from devdna.recruiter import batch_response, create_batch
-from devdna.rubrics import get_rubric
+from devdna.rubrics import get_rubric, role_label, supported_roles
 from devdna.schemas import (
     AnalysisCreate,
     CvAlignment,
     EvidenceSnapshot,
+    GitHubContributions,
+    GitHubProfile,
     LearningPlan,
     LearningRecommendation,
     ReadmeDraft,
@@ -49,7 +51,21 @@ from devdna.web_sessions import SESSION_COOKIE, create_web_session, verify_web_s
 
 router = APIRouter(tags=["web"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
-ASSET_VERSION = "3"
+ASSET_VERSION = "4"
+
+
+def week_width(week: object) -> int:
+    pushes = getattr(week, "push_count", 0) or 0
+    pulls = getattr(week, "pull_request_count", 0) or 0
+    return min(100, (pushes + pulls) * 20)
+
+
+def role_options(selected: str = "python_backend_developer") -> str:
+    return "".join(
+        f'<option value="{role}"{" selected" if role == selected else ""}>'
+        f"{role_label(role)}</option>"
+        for role in supported_roles()
+    )
 FAVICON = (
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E"
     "%3Crect width='64' height='64' rx='12' fill='%232457d6'/%3E"
@@ -400,6 +416,11 @@ def dashboard_response(
         <label>What do you want to do?</label>
         <div class="action-grid">{action_options}</div>
       </div>
+      <div class="field-group">
+        <label for="dashboard_role">Evaluate against this role</label>
+        <select id="dashboard_role" name="target_role">{role_options()}</select>
+        <p class="field-help">Strengths, gaps, and next actions are scored against this rubric.</p>
+      </div>
       <button class="button button-primary form-submit" type="submit">Run analysis</button>
     </form>
   </section>
@@ -712,7 +733,7 @@ def render_history_page(analyses: list[AnalysisRun], authenticated: bool) -> str
   <a href="/reports/{escape(analysis.id, quote=True)}">
     <div>
       <strong>{escape(analysis.github_username)}</strong>
-      <span>Python backend developer</span>
+      <span>{escape(role_label(analysis.target_role))}</span>
     </div>
     <div class="history-meta">
       <span class="status-label {escape(analysis.status, quote=True)}">
@@ -791,9 +812,7 @@ def render_recruiter_home(error: str | None = None) -> str:
       </div>
       <div class="field-group">
         <label for="recruiter_role">Target role</label>
-        <select id="recruiter_role" name="target_role">
-          <option value="python_backend_developer">Python backend developer</option>
-        </select>
+        <select id="recruiter_role" name="target_role">{role_options()}</select>
       </div>
       <button class="button button-primary form-submit" type="submit">Analyze candidates</button>
     </form>
@@ -856,10 +875,122 @@ def render_recruiter_batch(batch: RecruiterBatchResponse) -> str:
     return page_shell("Candidate comparison | DevDNA", content, refresh=pending)
 
 
+def render_profile_overview(
+    username: str,
+    profile: GitHubProfile | None,
+    contributions: GitHubContributions | None,
+    report: ReportSnapshot,
+) -> str:
+    def stat(value: object, label: str) -> str:
+        return f'<div class="stat"><strong>{value}</strong><span>{escape(label)}</span></div>'
+
+    if profile is None:
+        return ""
+
+    account_stats = (
+        stat(profile.public_repos, "public repos")
+        + stat(profile.followers, "followers")
+        + stat(profile.following, "following")
+        + stat(profile.created_at.strftime("%Y"), "member since")
+    )
+
+    if contributions is not None:
+        activity_stats = (
+            stat(contributions.push_events, "pushes in sample")
+            + stat(contributions.pull_request_events, "PRs in sample")
+            + stat(contributions.distinct_repositories, "repos touched")
+            + stat(contributions.open_source_events, "open-source events")
+        )
+        no_repo_activity = '<li class="empty-note">No external repo activity.</li>'
+        open_source_rows = "".join(
+            f'<li><span class="repo-name">{escape(repo)}</span></li>'
+            for repo in contributions.open_source_repositories[:6]
+        )
+        open_source_block = (
+            f"""<div class="overview-block">
+              <h3>Open-source activity</h3>
+              <p>Recent work outside the account’s own repositories.</p>
+              <ul class="repo-list">{open_source_rows or no_repo_activity}</ul>
+            </div>"""
+            if contributions.open_source_repositories
+            else ""
+        )
+        weekly = contributions.weekly[-8:]
+        weekly_rows = "".join(
+            (
+                '<div class="week-bar">'
+                f'<div class="week-total" style="width:{week_width(w)}%"></div>'
+                f'<span>{escape(w.week_start[5:])}</span>'
+                f'<small>{w.push_count + w.pull_request_count}</small>'
+                "</div>"
+            )
+            for w in weekly
+        )
+        activity_block = f"""<div class="overview-block">
+          <h3>Contribution frequency</h3>
+          <p>Commit pushes and pull requests across the sampled public event window.</p>
+          <div class="stat-grid">{activity_stats}</div>
+          <div class="week-bars" aria-label="Recent contribution frequency">{weekly_rows}</div>
+        </div>"""
+    else:
+        activity_block = ""
+
+    strengths = "".join(
+        f'<li><strong>{escape(item.title)}</strong><span>{escape(item.summary)}</span></li>'
+        for item in report.strengths
+    )
+    gaps = "".join(
+        f'<li><strong>{escape(item.title)}</strong><span>{escape(item.explanation)}</span></li>'
+        for item in report.gaps
+    )
+    no_strengths = '<li class="empty-note">No verified strengths yet.</li>'
+    no_gaps = '<li class="empty-note">No gaps remain on this rubric.</li>'
+    alignment = (
+        report.alignment_label
+        if report.strengths or report.gaps
+        else "No role evidence measured yet"
+    )
+
+    return f"""
+<section class="overview-dashboard" aria-label="Profile overview">
+  <div class="section-heading">
+    <h2 id="overview-title">Profile overview</h2>
+    <p>Account signal alongside the evidence verdict for
+      {escape(role_label(report.target_role))}.</p>
+  </div>
+  <div class="overview-grid">
+    <div class="overview-block">
+      <h3>Account</h3>
+      <p>Public footprint of <strong>{escape(username)}</strong>.</p>
+      <div class="stat-grid">{account_stats}</div>
+    </div>
+    <div class="overview-block">
+      <h3>Role verdict</h3>
+      <p class="overview-verdict">{escape(alignment)}</p>
+      <p>Verified {report.requirements_met} of {report.requirements_total} requirements against
+        the {escape(role_label(report.target_role))} rubric.</p>
+    </div>
+    {activity_block}
+    {open_source_block}
+    <div class="overview-block">
+      <h3>Strengths</h3>
+      <ul class="verdict-list">{strengths or no_strengths}</ul>
+    </div>
+    <div class="overview-block">
+      <h3>Weak points</h3>
+      <ul class="verdict-list">{gaps or no_gaps}</ul>
+    </div>
+  </div>
+</section>"""
+
+
 def render_report_page(
     username: str,
     analysis_id: str,
     report: ReportSnapshot,
+    *,
+    profile: GitHubProfile | None = None,
+    contributions: GitHubContributions | None = None,
 ) -> str:
     rubric = get_rubric(report.target_role)
     strengths = {item.requirement: item for item in report.strengths}
@@ -893,7 +1024,7 @@ def render_report_page(
 <main class="report-shell">
   <section class="report-hero">
     <div class="hero-content">
-      <p class="eyebrow">Python backend developer</p>
+      <p class="eyebrow">{escape(role_label(report.target_role))}</p>
       <h1>Evidence over activity.</h1>
       <p class="hero-copy">
         A source-backed view of <strong>{escape(username)}</strong>: verified skills,
@@ -926,6 +1057,7 @@ def render_report_page(
       <span>Turn evidence gaps into portfolio work</span>
     </a>
   </nav>
+  {render_profile_overview(username, profile, contributions, report)}
   <section class="evidence-section" aria-labelledby="evidence-title">
     <div class="section-heading">
       <h2 id="evidence-title">The evidence spine</h2>
@@ -1028,6 +1160,7 @@ async def app_analyze(request: Request, session: SessionDependency) -> Response:
 
     username = fields.get("github_username", [""])[0].strip()
     action = fields.get("action", [""])[0]
+    target_role = fields.get("target_role", ["python_backend_developer"])[0]
     if owner_id is None:
         return dashboard_response(
             username=username,
@@ -1057,13 +1190,13 @@ async def app_analyze(request: Request, session: SessionDependency) -> Response:
 
     try:
         payload = AnalysisCreate.model_validate(
-            {"github_username": username, "target_role": "python_backend_developer"}
+            {"github_username": username, "target_role": target_role}
         )
     except ValidationError:
         return dashboard_response(
             username=username,
             action=action,
-            error="Enter a valid GitHub username.",
+            error="Enter a valid GitHub username and select a supported role.",
             clerk_key=request.app.state.settings.clerk_publishable_key,
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             authenticated=authenticated,
@@ -1342,7 +1475,28 @@ async def report_page(
             status_code=status.HTTP_202_ACCEPTED,
         )
     report = ReportSnapshot.model_validate(analysis.report_snapshot)
-    return HTMLResponse(render_report_page(analysis.github_username, analysis.id, report))
+    profile = None
+    contributions = None
+    if analysis.profile_snapshot:
+        try:
+            profile = GitHubProfile.model_validate(analysis.profile_snapshot.get("profile", {}))
+        except ValidationError:
+            profile = None
+        snapshot_contributions = analysis.profile_snapshot.get("contributions")
+        if snapshot_contributions:
+            try:
+                contributions = GitHubContributions.model_validate(snapshot_contributions)
+            except ValidationError:
+                contributions = None
+    return HTMLResponse(
+        render_report_page(
+            analysis.github_username,
+            analysis.id,
+            report,
+            profile=profile,
+            contributions=contributions,
+        )
+    )
 
 
 @router.get("/reports/{analysis_id}/readme", response_class=HTMLResponse)
