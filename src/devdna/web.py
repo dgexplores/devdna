@@ -149,8 +149,7 @@ def auth_script(clerk_key: str) -> str:
         loader.state = "ready";
         loader.queue.splice(0).forEach(function (fn) {{ fn(); }});
       }};
-      ui.onload = function () {{ if (window.Clerk) onReady(); else ui.onerror(); }};
-      core.onload = function () {{
+      ui.onload = core.onload = function () {{
         if (typeof window.Clerk !== "undefined" &&
             typeof window.__internal_ClerkUICtor !== "undefined") {{
           onReady();
