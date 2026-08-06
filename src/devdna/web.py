@@ -204,7 +204,7 @@ def auth_script(clerk_key: str) -> str:
                   fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
                 }}
               }}
-            }}));
+            }});
           }} catch (e) {{
             console.error("Clerk mountSignIn failed", e);
             var note = document.createElement("p");
