@@ -119,7 +119,7 @@ def auth_script(clerk_key: str) -> str:
     var clerkDomain = null;
     try {{
       var b64 = key.split("_")[2];
-      clerkDomain = atob(b64).replace(/^www\\./, "");
+      clerkDomain = atob(b64).replace(/^www\\./, "").replace(/\\$$/, "");
     }} catch (e) {{
       clerkDomain = null;
     }}
@@ -175,21 +175,10 @@ def auth_script(clerk_key: str) -> str:
       var redirectToApp = function () {{
         if (window.location.pathname !== "/app") window.location.href = "/app";
       }};
-      console.log("[devdna] before load", {{
-        hasClerk: typeof window.Clerk !== "undefined",
-        hasCtor: typeof window.__internal_ClerkUICtor !== "undefined",
-        loaded: window.Clerk && window.Clerk.loaded,
-        status: window.Clerk && window.Clerk.status
-      }});
       clerk.load({{
         publishableKey: key,
         ui: {{ ClerkUI: window.__internal_ClerkUICtor }}
       }}).then(function () {{
-        console.log("[devdna] after load", {{
-          loaded: clerk.loaded,
-          status: clerk.status,
-          hasMount: typeof clerk.mountSignIn === "function"
-        }});
         if (clerk.isSignedIn || clerk.user) {{
           return clerk.session.getToken().then(function (token) {{
             return exchange(token);
