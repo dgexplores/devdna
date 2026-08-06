@@ -139,6 +139,7 @@ def auth_script(clerk_key: str) -> str:
       ui.async = true;
       var core = document.createElement("script");
       core.src = "https://" + clerkDomain + "/npm/@clerk/clerk-js@6/dist/clerk.browser.js";
+      core.setAttribute("data-clerk-publishable-key", key);
       core.crossOrigin = "anonymous";
       core.async = true;
       var done = false;
