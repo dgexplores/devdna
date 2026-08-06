@@ -90,8 +90,8 @@ def topbar_nav(brand_suffix: str, *, home_url: str = "/") -> str:
 
 
 def auth_script(clerk_key: str) -> str:
-    """Load Clerk and render the embedded <SignIn/> component, then exchange the
-    resulting session token for a DevDNA web session cookie."""
+    """Load Clerk core + UI bundles and render the embedded <SignIn/> component,
+    then exchange the resulting session token for a DevDNA web session cookie."""
     if not clerk_key:
         return "<script>window.__DEVDNA_AUTH__ = { key: null };</script>"
     safe_key = json.dumps(clerk_key)
@@ -100,19 +100,56 @@ def auth_script(clerk_key: str) -> str:
   (function () {{
     var key = window.__DEVDNA_AUTH__.key;
     if (!key) return;
-    var script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js";
-    script.setAttribute("data-clerk-publishable-key", key);
-    script.async = true;
-    script.onload = async function () {{
-      if (!window.Clerk) return;
-      var clerk = window.Clerk;
-      try {{
-        await clerk.load({{ afterSignInUrl: "/app", afterSignUpUrl: "/app" }});
-      }} catch (e) {{
-        console.error("Clerk load failed", e);
-        return;
+    var clerkDomain = null;
+    try {{
+      var b64 = key.split("_")[2];
+      clerkDomain = atob(b64).replace(/^www\\./, "");
+    }} catch (e) {{
+      clerkDomain = null;
+    }}
+    if (!clerkDomain) return;
+    var loader = window.__DEVDNA_CLERK_LOADER__ = window.__DEVDNA_CLERK_LOADER__ || {{
+      state: "pending",
+      queue: [],
+      get: function (fn) {{
+        if (this.state === "ready") {{ fn(); return; }}
+        this.queue.push(fn);
       }}
+    }};
+    if (loader.state !== "ready") {{
+      var ui = document.createElement("script");
+      ui.src = "https://" + clerkDomain + "/npm/@clerk/ui@1/dist/ui.browser.js";
+      ui.crossOrigin = "anonymous";
+      ui.async = true;
+      var core = document.createElement("script");
+      core.src = "https://" + clerkDomain + "/npm/@clerk/clerk-js@6/dist/clerk.browser.js";
+      core.setAttribute("data-clerk-publishable-key", key);
+      core.crossOrigin = "anonymous";
+      core.async = true;
+      var done = false;
+      var onReady = function () {{
+        if (done) return;
+        done = true;
+        loader.state = "ready";
+        loader.queue.splice(0).forEach(function (fn) {{ fn(); }});
+      }};
+      ui.onload = function () {{ if (window.Clerk) onReady(); else ui.onerror(); }};
+      core.onload = function () {{
+        if (typeof window.Clerk !== "undefined" &&
+            typeof window.__internal_ClerkUICtor !== "undefined") {{
+          onReady();
+        }}
+      }};
+      core.onerror = ui.onerror = function () {{
+        if (done) return;
+        console.error("Clerk SDK failed to load");
+      }};
+      document.head.appendChild(ui);
+      document.head.appendChild(core);
+    }}
+    loader.get(function () {{
+      var clerk = window.Clerk;
+      if (!clerk) return;
       var exchange = function (token) {{
         return fetch("/auth/clerk", {{
           method: "POST",
@@ -123,55 +160,60 @@ def auth_script(clerk_key: str) -> str:
       var redirectToApp = function () {{
         if (window.location.pathname !== "/app") window.location.href = "/app";
       }};
-      if (clerk.user) {{
-        try {{
-          var token = await clerk.session.getToken();
-          await exchange(token);
-        }} finally {{
-          redirectToApp();
+      clerk.load({{ ui: {{ ClerkUI: window.__internal_ClerkUICtor }} }}).then(function () {{
+        if (clerk.isSignedIn || clerk.user) {{
+          return clerk.session.getToken().then(function (token) {{
+            return exchange(token);
+          }}).then(redirectToApp);
         }}
-        return;
-      }}
-      var host = document.getElementById("clerk-sign-in");
-      if (host && typeof clerk.mountSignIn === "function") {{
-        try {{
-          clerk.mountSignIn(host, {{
-            withSignUp: true,
-            fallbackRedirectUrl: "/app",
-            afterSignInUrl: "/app",
-            afterSignUpUrl: "/app",
-            routing: "hash",
-            appearance: {{
-              baseTheme: null,
-              variables: {{
-                colorPrimary: "#58a6ff",
-                colorBackground: "#11151c",
-                colorText: "#e6edf3",
-                colorTextSecondary: "#9aa7b7",
-                colorInputBackground: "#0a0c10",
-                colorInputText: "#e6edf3",
-                borderRadius: "8px",
-                fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-                fontFamilyButtons: "inherit"
+        var host = document.getElementById("clerk-sign-in");
+        if (host && typeof clerk.mountSignIn === "function") {{
+          try {{
+            clerk.mountSignIn(host, {{
+              withSignUp: true,
+              fallbackRedirectUrl: "/app",
+              afterSignInUrl: "/app",
+              afterSignUpUrl: "/app",
+              appearance: {{
+                variables: {{
+                  colorPrimary: "#58a6ff",
+                  colorBackground: "#11151c",
+                  colorText: "#e6edf3",
+                  colorTextSecondary: "#9aa7b7",
+                  colorInputBackground: "#0a0c10",
+                  colorInputText: "#e6edf3",
+                  borderRadius: "8px",
+                  fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+                }}
               }}
-            }}
+            }}));
+          }} catch (e) {{
+            console.error("Clerk mountSignIn failed", e);
+            var note = document.createElement("p");
+            note.className = "form-error";
+            note.textContent = "Sign-in is unavailable. Please try again.";
+            host.appendChild(note);
+          }}
+        }}
+        if (clerk.addListener) {{
+          clerk.addListener(function (payload) {{
+            if (!payload.signedIn) return;
+            clerk.session.getToken().then(function (token) {{
+              return exchange(token);
+            }}).then(redirectToApp);
           }});
-        }} catch (e) {{
-          console.error("Clerk mountSignIn failed", e);
+        }}
+      }}).catch(function (e) {{
+        console.error("Clerk load failed", e);
+        var host = document.getElementById("clerk-sign-in");
+        if (host) {{
           var note = document.createElement("p");
           note.className = "form-error";
           note.textContent = "Sign-in is unavailable. Please try again.";
           host.appendChild(note);
         }}
-      }}
-      clerk.addListener(function (payload) {{
-        if (!payload.signedIn) return;
-        clerk.session.getToken().then(function (token) {{
-          return exchange(token);
-        }}).then(redirectToApp);
       }});
-    }};
-    document.head.appendChild(script);
+    }});
   }})();
 </script>"""
 

@@ -35,7 +35,8 @@ def add_security_headers(response: Response, path: str) -> None:
     if path in {"/", "/app", "/history", "/recruiter"} or path.startswith("/reports/"):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self' 'unsafe-inline' "
-            "https://cdn.jsdelivr.net; worker-src 'self' blob:; "
+            "https://cdn.jsdelivr.net https://*.clerk.accounts.dev; "
+            "worker-src 'self' blob:; "
             "connect-src 'self' "
             "https://*.clerk.accounts.dev https://clerk.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
