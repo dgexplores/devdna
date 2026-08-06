@@ -1,7 +1,14 @@
 import pytest
 
 from devdna.reports import generate_report
-from devdna.schemas import EvidenceItem, EvidenceSnapshot, EvidenceSource
+from devdna.schemas import (
+    ContributionWeek,
+    EvidenceItem,
+    EvidenceSnapshot,
+    EvidenceSource,
+    GitHubContributions,
+    GitHubProfile,
+)
 from devdna.web import render_report_page
 
 
@@ -105,3 +112,70 @@ def test_render_report_page_escapes_source_paths_and_exposes_evidence() -> None:
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
     assert "/v1/analyses/analysis-id/report" in html
+
+
+def test_render_report_page_without_contributions_does_not_500() -> None:
+    report = generate_report(evidence_snapshot(), "completed")
+    profile = GitHubProfile(
+        login="octocat",
+        id=1,
+        avatar_url="https://example.com/avatar.png",
+        html_url="https://github.com/octocat",
+        name=None,
+        public_repos=5,
+        followers=10,
+        following=3,
+        created_at="2020-01-01T00:00:00Z",
+        updated_at="2020-01-01T00:00:00Z",
+    )
+
+    html = render_report_page(
+        "octocat",
+        "analysis-id",
+        report,
+        profile=profile,
+        contributions=None,
+    )
+
+    assert "Profile overview" in html
+    assert "Contribution frequency" not in html
+
+
+def test_render_report_page_with_empty_open_source_repos_does_not_500() -> None:
+    report = generate_report(evidence_snapshot(), "completed")
+    profile = GitHubProfile(
+        login="octocat",
+        id=1,
+        avatar_url="https://example.com/avatar.png",
+        html_url="https://github.com/octocat",
+        name=None,
+        public_repos=5,
+        followers=10,
+        following=3,
+        created_at="2020-01-01T00:00:00Z",
+        updated_at="2020-01-01T00:00:00Z",
+    )
+    contributions = GitHubContributions(
+        schema_version="1",
+        sample_start="2026-07-01T00:00:00Z",
+        sample_end="2026-07-08T00:00:00Z",
+        days_span=7,
+        total_events=0,
+        push_events=0,
+        pull_request_events=0,
+        distinct_repositories=0,
+        open_source_events=0,
+        open_source_repositories=[],
+        weekly=[ContributionWeek(week_start="2026-07-01", push_count=0, pull_request_count=0)],
+    )
+
+    html = render_report_page(
+        "octocat",
+        "analysis-id",
+        report,
+        profile=profile,
+        contributions=contributions,
+    )
+
+    assert "Profile overview" in html
+    assert "Open-source activity" not in html

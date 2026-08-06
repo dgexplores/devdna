@@ -936,6 +936,7 @@ def render_profile_overview(
         </div>"""
     else:
         activity_block = ""
+        open_source_block = ""
 
     strengths = "".join(
         f'<li><strong>{escape(item.title)}</strong><span>{escape(item.summary)}</span></li>'
