@@ -139,7 +139,6 @@ def auth_script(clerk_key: str) -> str:
       ui.async = true;
       var core = document.createElement("script");
       core.src = "https://" + clerkDomain + "/npm/@clerk/clerk-js@6/dist/clerk.browser.js";
-      core.setAttribute("data-clerk-publishable-key", key);
       core.crossOrigin = "anonymous";
       core.async = true;
       var done = false;
@@ -175,7 +174,10 @@ def auth_script(clerk_key: str) -> str:
       var redirectToApp = function () {{
         if (window.location.pathname !== "/app") window.location.href = "/app";
       }};
-      clerk.load({{ ui: {{ ClerkUI: window.__internal_ClerkUICtor }} }}).then(function () {{
+      clerk.load({{
+        publishableKey: key,
+        ui: {{ ClerkUI: window.__internal_ClerkUICtor }}
+      }}).then(function () {{
         if (clerk.isSignedIn || clerk.user) {{
           return clerk.session.getToken().then(function (token) {{
             return exchange(token);
