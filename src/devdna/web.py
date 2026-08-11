@@ -12,6 +12,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Request,
     Response,
     UploadFile,
@@ -36,6 +37,7 @@ from devdna.schemas import (
     EvidenceSnapshot,
     GitHubContributions,
     GitHubProfile,
+    GitHubRepository,
     LearningPlan,
     LearningRecommendation,
     ReadmeDraft,
@@ -503,6 +505,14 @@ def render_requirement(
 
 def render_action(action: ReportAction) -> str:
     needed = "".join(f"<li>{escape(item)}</li>" for item in action.evidence_needed)
+    solution = ""
+    if action.solution or action.template:
+        body = "\n\n".join(part for part in (action.solution, action.template) if part)
+        solution = f"""
+      <details class="action-solution">
+        <summary>Starter solution</summary>
+        <div><pre>{escape(body)}</pre></div>
+      </details>"""
     return f"""
 <article class="action-row" id="action-{escape(action.requirement, quote=True)}">
   <div class="action-priority" aria-label="Priority {action.priority}">{action.priority}</div>
@@ -511,6 +521,7 @@ def render_action(action: ReportAction) -> str:
     <h3>{escape(action.title)}</h3>
     <p>{escape(action.rationale)}</p>
     <ul class="needed-list">{needed}</ul>
+    {solution}
   </div>
 </article>"""
 
@@ -526,6 +537,7 @@ def render_readme_page(username: str, analysis_id: str, draft: ReadmeDraft) -> s
         if repository_items
         else '<p class="empty-note">No repository has verified role evidence yet.</p>'
     )
+    readme_style_query = f"?style={escape(draft.style, quote=True)}"
     content = f"""
 {topbar_nav("README studio")}
 <main class="readme-shell">
@@ -540,7 +552,8 @@ def render_readme_page(username: str, analysis_id: str, draft: ReadmeDraft) -> s
         href="/reports/{escape(analysis_id, quote=True)}">
         Back to report
       </a>
-      <a class="button button-primary" href="/reports/{escape(analysis_id, quote=True)}/readme.md">
+      <a class="button button-primary"
+        href="/reports/{escape(analysis_id, quote=True)}/readme.md{readme_style_query}">
         Download Markdown
       </a>
       <a class="button button-secondary"
@@ -548,6 +561,14 @@ def render_readme_page(username: str, analysis_id: str, draft: ReadmeDraft) -> s
         Open JSON
       </a>
     </div>
+  </section>
+  <section class="style-switcher" aria-label="README style">
+    <a class="style-tab{" style-tab-active" if draft.style == "minimal" else ""}"
+      href="/reports/{escape(analysis_id, quote=True)}/readme?style=minimal">Minimal</a>
+    <a class="style-tab{" style-tab-active" if draft.style == "badges" else ""}"
+      href="/reports/{escape(analysis_id, quote=True)}/readme?style=badges">Badges</a>
+    <a class="style-tab{" style-tab-active" if draft.style == "centered" else ""}"
+      href="/reports/{escape(analysis_id, quote=True)}/readme?style=centered">Centered</a>
   </section>
   <section class="readme-workspace" aria-labelledby="draft-title">
     <div class="readme-guidance">
@@ -987,6 +1008,43 @@ def render_profile_overview(
 </section>"""
 
 
+def render_language_bar(languages: dict[str, int]) -> str:
+    if not languages:
+        return ""
+    grand_total = sum(languages.values())
+    bars = []
+    for language, bytes_count in list(languages.items())[:6]:
+        share = bytes_count / grand_total
+        bars.append(
+            f'<div class="lang-row">'
+            f'<span class="lang-name">{escape(language)}</span>'
+            f'<div class="lang-track"><div class="lang-fill" '
+            f'style="width:{share * 100:.1f}%"></div></div>'
+            f'<span class="lang-share">{share * 100:.0f}%</span>'
+            f"</div>"
+        )
+    return f'<div class="lang-bars">{"".join(bars)}</div>'
+
+
+def render_organizations_chips(organizations: list[str]) -> str:
+    if not organizations:
+        return ""
+    chips = "".join(
+        f'<span class="org-chip">{escape(organization)}</span>'
+        for organization in organizations[:12]
+    )
+    return f'<div class="org-chips">{chips}</div>'
+
+
+def render_technology_chips(technologies: list[str]) -> str:
+    if not technologies:
+        return ""
+    chips = "".join(
+        f'<span class="tech-chip">{escape(technology)}</span>' for technology in technologies[:16]
+    )
+    return f'<div class="tech-chips">{chips}</div>'
+
+
 def render_report_page(
     username: str,
     analysis_id: str,
@@ -994,11 +1052,21 @@ def render_report_page(
     *,
     profile: GitHubProfile | None = None,
     contributions: GitHubContributions | None = None,
+    repositories: list[GitHubRepository] | None = None,
+    organizations: list[str] | None = None,
 ) -> str:
     rubric = get_rubric(report.target_role)
     strengths = {item.requirement: item for item in report.strengths}
     gaps = {item.requirement: item for item in report.gaps}
     actions = {item.requirement: item for item in report.actions}
+    languages: dict[str, int] = {}
+    for repository in repositories or []:
+        for language, bytes_count in repository.languages.items():
+            languages[language] = languages.get(language, 0) + bytes_count
+    languages = dict(sorted(languages.items(), key=lambda item: item[1], reverse=True))
+    language_bar = render_language_bar(languages)
+    organizations_html = render_organizations_chips(organizations or [])
+    technology_chips = render_technology_chips(report.tech_stack)
     evidence_rows = "".join(
         render_requirement(
             requirement.key,
@@ -1061,6 +1129,26 @@ def render_report_page(
     </a>
   </nav>
   {render_profile_overview(username, profile, contributions, report)}
+  <section class="context-section" aria-labelledby="context-title">
+    <div class="section-heading">
+      <h2 id="context-title">Project context</h2>
+      <p>Languages, organizations, and detected stack from inspected repositories.</p>
+    </div>
+    <div class="context-grid">
+      <div class="context-block">
+        <h3>Languages</h3>
+        {language_bar or '<p class="empty-note">No language data collected.</p>'}
+      </div>
+      <div class="context-block">
+        <h3>Organizations</h3>
+        {organizations_html or '<p class="empty-note">No public organization memberships.</p>'}
+      </div>
+      <div class="context-block">
+        <h3>Technology stack</h3>
+        {technology_chips or '<p class="empty-note">No stack detected in inspected files.</p>'}
+      </div>
+    </div>
+  </section>
   <section class="evidence-section" aria-labelledby="evidence-title">
     <div class="section-heading">
       <h2 id="evidence-title">The evidence spine</h2>
@@ -1480,6 +1568,8 @@ async def report_page(
     report = ReportSnapshot.model_validate(analysis.report_snapshot)
     profile = None
     contributions = None
+    repositories: list[GitHubRepository] = []
+    organizations: list[str] = []
     if analysis.profile_snapshot:
         try:
             profile = GitHubProfile.model_validate(analysis.profile_snapshot.get("profile", {}))
@@ -1491,6 +1581,22 @@ async def report_page(
                 contributions = GitHubContributions.model_validate(snapshot_contributions)
             except ValidationError:
                 contributions = None
+        snapshot_repositories = analysis.profile_snapshot.get("repositories")
+        if snapshot_repositories:
+            try:
+                repositories = [
+                    GitHubRepository.model_validate(repository)
+                    for repository in snapshot_repositories
+                ]
+            except ValidationError:
+                repositories = []
+        snapshot_organizations = analysis.profile_snapshot.get("organizations")
+        if isinstance(snapshot_organizations, list):
+            organizations = [
+                organization
+                for organization in snapshot_organizations
+                if isinstance(organization, str)
+            ]
     return HTMLResponse(
         render_report_page(
             analysis.github_username,
@@ -1498,12 +1604,18 @@ async def report_page(
             report,
             profile=profile,
             contributions=contributions,
+            repositories=repositories,
+            organizations=organizations,
         )
     )
 
 
 @router.get("/reports/{analysis_id}/readme", response_class=HTMLResponse)
-async def readme_page(analysis_id: str, session: SessionDependency) -> HTMLResponse:
+async def readme_page(
+    analysis_id: str,
+    session: SessionDependency,
+    style: str = Query(default="minimal", pattern="^(minimal|badges|centered)$"),
+) -> HTMLResponse:
     analysis = await session.get(AnalysisRun, analysis_id)
     if analysis is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
@@ -1513,12 +1625,16 @@ async def readme_page(analysis_id: str, session: SessionDependency) -> HTMLRespo
             detail="README draft is not ready",
         )
     report = ReportSnapshot.model_validate(analysis.report_snapshot)
-    draft = generate_profile_readme(analysis.github_username, report)
+    draft = generate_profile_readme(analysis.github_username, report, style=style)
     return HTMLResponse(render_readme_page(analysis.github_username, analysis.id, draft))
 
 
 @router.get("/reports/{analysis_id}/readme.md", response_class=PlainTextResponse)
-async def download_readme(analysis_id: str, session: SessionDependency) -> PlainTextResponse:
+async def download_readme(
+    analysis_id: str,
+    session: SessionDependency,
+    style: str = Query(default="minimal", pattern="^(minimal|badges|centered)$"),
+) -> PlainTextResponse:
     analysis = await session.get(AnalysisRun, analysis_id)
     if analysis is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
@@ -1528,7 +1644,7 @@ async def download_readme(analysis_id: str, session: SessionDependency) -> Plain
             detail="README draft is not ready",
         )
     report = ReportSnapshot.model_validate(analysis.report_snapshot)
-    draft = generate_profile_readme(analysis.github_username, report)
+    draft = generate_profile_readme(analysis.github_username, report, style=style)
     return PlainTextResponse(
         draft.markdown,
         media_type="text/markdown",

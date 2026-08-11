@@ -221,6 +221,38 @@ def test_readme_studio_offers_private_cv_alignment_workflow(tmp_path: Path) -> N
     assert "CV only — not verified" in result.text
 
 
+def test_readme_endpoint_validates_style_query(tmp_path: Path) -> None:
+    database_path = tmp_path / "style.db"
+    client = create_test_client(database_path, FakeQueue())
+    try:
+        created = client.post(
+            "/v1/analyses",
+            json={
+                "github_username": "octocat",
+                "target_role": "python_backend_developer",
+            },
+        )
+        analysis_id = created.json()["id"]
+        save_completed_snapshots(database_path, analysis_id, cv_evidence())
+        centered = client.get(f"/v1/analyses/{analysis_id}/readme?style=centered")
+        invalid = client.get(f"/v1/analyses/{analysis_id}/readme?style=fancy")
+        studio = client.get(f"/reports/{analysis_id}/readme?style=badges")
+        download = client.get(f"/reports/{analysis_id}/readme.md?style=minimal")
+        invalid_studio = client.get(f"/reports/{analysis_id}/readme?style=fancy")
+    finally:
+        client.__exit__(None, None, None)
+
+    assert centered.status_code == 200
+    assert centered.json()["style"] == "centered"
+    assert "github-readme-stats" in centered.json()["markdown"]
+    assert invalid.status_code == 422
+    assert studio.status_code == 200
+    assert 'class="style-tab style-tab-active"' in studio.text
+    assert download.status_code == 200
+    assert download.headers["content-type"].startswith("text/markdown")
+    assert invalid_studio.status_code == 422
+
+
 def test_create_and_get_analysis(tmp_path: Path) -> None:
     queue = FakeQueue()
     client = create_test_client(tmp_path / "api.db", queue)

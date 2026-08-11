@@ -120,6 +120,20 @@ def decode_cached(value: bytes | str | None) -> CachedJson | None:
         return None
 
 
+def repository_from_payload(payload: Any) -> GitHubRepository:
+    if not isinstance(payload, dict):
+        raise ValueError("invalid repository payload")
+    normalized = dict(payload)
+    license_info = payload.get("license")
+    normalized["license_name"] = (
+        license_info.get("spdx_id")
+        if isinstance(license_info, dict) and license_info.get("spdx_id")
+        else None
+    )
+    normalized.pop("license", None)
+    return GitHubRepository.model_validate(normalized)
+
+
 def select_repositories(
     repositories: list[GitHubRepository],
     limit: int = MAX_REPOSITORIES,
@@ -137,6 +151,14 @@ def select_repositories(
         key=lambda repository: repository.pushed_at or repository.updated_at,
         reverse=True,
     )[:limit]
+
+
+def aggregate_languages(repositories: list[GitHubRepository]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for repository in repositories:
+        for name, bytes_count in repository.languages.items():
+            totals[name] = totals.get(name, 0) + bytes_count
+    return dict(sorted(totals.items(), key=lambda item: item[1], reverse=True))
 
 
 def summarize_warnings(warnings: list[str]) -> str:
@@ -386,7 +408,7 @@ class GitHubClient:
                         "Repository collection failed; profile data is still available",
                     ) from error
                 repositories.extend(
-                    GitHubRepository.model_validate(repository) for repository in response.body
+                    repository_from_payload(repository) for repository in response.body
                 )
                 remaining = response.rate_limit_remaining
                 reset = response.rate_limit_reset
@@ -528,6 +550,35 @@ class GitHubClient:
                 )
                 if remaining == 0:
                     break
+                try:
+                    languages_response = await self.get_json(
+                        client,
+                        f"/repos/{repository_path}/languages",
+                        username,
+                    )
+                except GitHubRateLimited as error:
+                    remaining = 0
+                    reset = error.reset_at or reset
+                    warnings.append(
+                        f"{repository.full_name}: GitHub rate limit stopped language data"
+                    )
+                    break
+                except (
+                    GitHubTransientError,
+                    GitHubUserNotFound,
+                    httpx2.HTTPStatusError,
+                ):
+                    warnings.append(f"{repository.full_name}: language data could not be inspected")
+                    continue
+                remaining = languages_response.rate_limit_remaining
+                reset = languages_response.rate_limit_reset
+                languages_body = languages_response.body
+                if isinstance(languages_body, dict):
+                    repository.languages = {
+                        str(name): int(bytes_count)
+                        for name, bytes_count in languages_body.items()
+                        if isinstance(bytes_count, int)
+                    }
 
         return inspections, warnings, remaining, reset
 
@@ -569,8 +620,34 @@ class GitHubClient:
             return None
         return aggregate_contributions(events, username, remaining, reset)
 
+    async def get_organizations(self, username: str) -> list[str]:
+        """List public organization memberships; never fails an analysis."""
+        try:
+            async with self.client() as client:
+                response = await self.get_json(
+                    client,
+                    f"/users/{quote(username, safe='')}/orgs",
+                    username,
+                    {"per_page": 100},
+                )
+        except (GitHubRateLimited, GitHubTransientError, GitHubUserNotFound):
+            return []
+        except httpx2.HTTPStatusError:
+            return []
+        body = response.body
+        if not isinstance(body, list):
+            return []
+        return sorted(
+            {
+                organization["login"]
+                for organization in body
+                if isinstance(organization, dict) and isinstance(organization.get("login"), str)
+            }
+        )
+
     async def get_snapshot(self, username: str) -> GitHubSnapshot:
         snapshot = await self.get_profile(username)
+        organizations = await self.get_organizations(username)
         try:
             repositories, remaining, reset = await self.get_repositories(username)
         except RepositoryCollectionFailed as error:
@@ -579,6 +656,7 @@ class GitHubClient:
                     profile=snapshot.profile,
                     repositories=error.repositories,
                     contributions=await self.get_contributions(username),
+                    organizations=organizations,
                     rate_limit_remaining=error.rate_limit_remaining
                     if error.rate_limit_remaining is not None
                     else snapshot.rate_limit_remaining,
@@ -614,6 +692,7 @@ class GitHubClient:
             repositories=repositories,
             inspections=inspections,
             contributions=contributions,
+            organizations=organizations,
             rate_limit_remaining=final_remaining,
             rate_limit_reset=final_reset,
         )

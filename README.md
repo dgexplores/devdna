@@ -96,13 +96,17 @@ curl http://localhost:8000/v1/analyses/ANALYSIS_ID/report
 
 Open the responsive evidence report at `http://localhost:8000/reports/ANALYSIS_ID`. Reports show transparent requirement coverage rather than a universal developer score. See [the report contract](docs/REPORT_CONTRACT.md).
 
+The report adds project context next to the evidence spine: language share from each inspected repository, public organization memberships, and a detected technology stack (from manifest dependencies and file paths). Language and organization data inform display only, never rubric scoring. Every improvement action carries an expandable starter solution with a code template sized to the role rubric.
+
 Reports and their README and learning pages are readable by anyone with the analysis ID because they contain public GitHub evidence only. Private data stays gated: analysis history requires the session or API key, and CV alignment and recruiter batches verify ownership.
 
 Each completed report links to an evidence-constrained profile README workspace at
 `http://localhost:8000/reports/ANALYSIS_ID/readme`. The draft features only repositories and
 engineering practices verified by the saved report, labels improvement work as aspirational, and
 can be downloaded as `README.md`. Its typed JSON form is available at
-`/v1/analyses/ANALYSIS_ID/readme`; DevDNA never publishes the draft automatically.
+`/v1/analyses/ANALYSIS_ID/readme`; DevDNA never publishes the draft automatically. The studio
+switches between three layouts — `minimal`, `badges`, and `centered` — via `?style=` on the page,
+the download, and the API.
 
 The README workspace can privately compare a PDF or DOCX CV with the saved GitHub evidence.
 Verified and CV-only skills are shown separately; CV-only statements never become verified claims.

@@ -1,5 +1,192 @@
 from dataclasses import dataclass
 
+PYTHON_PROJECT_TEMPLATE = """# pyproject.toml
+[project]
+name = "my-service"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116",
+  "sqlalchemy>=2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]"""
+
+FASTAPI_APP_TEMPLATE = """# app/main.py
+from fastapi import FastAPI
+
+app = FastAPI()
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}"""
+
+PYTEST_TEMPLATE = """# pytest.ini
+[pytest]
+testpaths = tests
+
+# tests/test_app.py
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_health() -> None:
+    response = client.get("/health")
+    assert response.status_code == 200"""
+
+DATABASE_TEMPLATE = """# 1. Initialize migrations
+alembic init migrations
+
+# 2. Declare a model (models.py)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Item(Base):
+    __tablename__ = "items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+# 3. Generate and apply
+alembic revision --autogenerate -m "create items table"
+alembic upgrade head"""
+
+CI_TEMPLATE = """# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pytest"""
+
+DOCKERFILE_TEMPLATE = """# Dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+
+CMD ["python", "-m", "app"]"""
+
+README_TEMPLATE = """# Project name
+
+One sentence: what problem this project solves.
+
+## Setup
+```bash
+pip install -r requirements.txt
+python -m app
+```
+
+## Verify
+```bash
+pytest
+```
+
+## Tradeoffs
+- What this project does not try to do yet."""
+
+PACKAGE_JSON_TEMPLATE = """{
+  "name": "my-frontend",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^18.3.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "vitest": "^2.0.0"
+  }
+}"""
+
+VITEST_TEMPLATE = """// src/App.test.tsx
+import { render, screen } from "@testing-library/react";
+import { App } from "./App";
+
+test("renders the heading", () => {
+  render(<App />);
+  expect(screen.getByRole("heading", { name: /hello/i })).toBeInTheDocument();
+});"""
+
+TSCONFIG_TEMPLATE = """{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx"
+  }
+}"""
+
+STYLING_TEMPLATE = """/* Component.module.css */
+.card {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: var(--surface-muted);
+}"""
+
+TERRAFORM_TEMPLATE = """# main.tf
+resource "aws_instance" "app" {
+  ami           = "ami-0abcdef1234567890"
+  instance_type = "t3.micro"
+
+  tags = { Name = "app" }
+}"""
+
+OBSERVABILITY_TEMPLATE = """# prometheus.yml
+scrape_configs:
+  - job_name: app
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["app:8000"]"""
+
+SECRETS_TEMPLATE = """# .env.example (committed, placeholder values only)
+DATABASE_URL=postgresql://user:secret@host:5432/db
+API_KEY=replace-me
+
+# .env (never committed; loaded at runtime)
+DATABASE_URL=postgresql://real-user:real-secret@host:5432/db"""
+
+DEPLOYMENT_TEMPLATE = """# render.yaml
+services:
+  - type: web
+    name: app
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port 8000"""
+
+FRONTEND_SCAFFOLD_TEMPLATE = """# Scaffold a modern frontend in one command
+npm create vite@latest my-frontend -- --template react-ts
+cd my-frontend
+npm install
+npm run dev"""
+
 
 @dataclass(frozen=True)
 class RubricRequirement:
@@ -10,6 +197,8 @@ class RubricRequirement:
     action_title: str
     action_detail: str
     evidence_needed: tuple[str, ...]
+    solution: str = ""
+    template: str | None = None
 
 
 @dataclass(frozen=True)
@@ -34,6 +223,12 @@ PYTHON_BACKEND_DEVELOPER = RoleRubric(
                 "application entry point."
             ),
             evidence_needed=("Python source files", "pyproject.toml or requirements.txt"),
+            solution=(
+                "Create a repository with a `pyproject.toml` or `requirements.txt` manifest, "
+                "an `app/` or `src/` package, and a runnable entry point so reviewers can "
+                "install and launch the project with two commands."
+            ),
+            template=PYTHON_PROJECT_TEMPLATE,
         ),
         RubricRequirement(
             key="api_framework",
@@ -49,6 +244,11 @@ PYTHON_BACKEND_DEVELOPER = RoleRubric(
                 "Build a small HTTP API with FastAPI, Django, or Flask and document how to run it."
             ),
             evidence_needed=("Framework dependency", "API application source", "Run instructions"),
+            solution=(
+                "Add FastAPI, Django, or Flask to the manifest and expose at least one HTTP "
+                "endpoint with a health route, request validation, and documented run command."
+            ),
+            template=FASTAPI_APP_TEMPLATE,
         ),
         RubricRequirement(
             key="testing",
@@ -61,6 +261,12 @@ PYTHON_BACKEND_DEVELOPER = RoleRubric(
                 "with one documented command."
             ),
             evidence_needed=("tests/ or test_*.py", "pytest dependency or configuration"),
+            solution=(
+                "Add a `tests/` directory with pytest tests for core behavior and one failure "
+                "path, plus a `pytest.ini` or `pyproject.toml` section that pins the test "
+                "discovery command."
+            ),
+            template=PYTEST_TEMPLATE,
         ),
         RubricRequirement(
             key="database",
@@ -72,6 +278,12 @@ PYTHON_BACKEND_DEVELOPER = RoleRubric(
                 "Add a real database-backed workflow and commit schema migration configuration."
             ),
             evidence_needed=("Database dependency", "Schema or migration files"),
+            solution=(
+                "Declare a database driver or ORM and commit migration files (Alembic for "
+                "SQLAlchemy, Django migrations, or Prisma) so the schema is versioned and "
+                "reproducible."
+            ),
+            template=DATABASE_TEMPLATE,
         ),
         RubricRequirement(
             key="automation",
@@ -84,6 +296,11 @@ PYTHON_BACKEND_DEVELOPER = RoleRubric(
                 "static checks."
             ),
             evidence_needed=(".github/workflows/*.yml",),
+            solution=(
+                "Commit a GitHub Actions workflow that installs dependencies, runs the test "
+                "suite, and runs static checks on every push and pull request."
+            ),
+            template=CI_TEMPLATE,
         ),
         RubricRequirement(
             key="delivery",
@@ -95,6 +312,11 @@ PYTHON_BACKEND_DEVELOPER = RoleRubric(
                 "Add a production-focused Dockerfile or Compose setup with documented startup."
             ),
             evidence_needed=("Dockerfile or Compose configuration",),
+            solution=(
+                "Add a production-focused Dockerfile with a pinned base image, dependency "
+                "install step, non-root user, and a documented start command."
+            ),
+            template=DOCKERFILE_TEMPLATE,
         ),
         RubricRequirement(
             key="documentation",
@@ -107,6 +329,11 @@ PYTHON_BACKEND_DEVELOPER = RoleRubric(
                 "tradeoffs."
             ),
             evidence_needed=("README or docs/ content",),
+            solution=(
+                "Write a README that explains the problem, setup and verify commands, "
+                "architecture, and the tradeoffs the project deliberately accepts."
+            ),
+            template=README_TEMPLATE,
         ),
     ),
 )
@@ -126,6 +353,11 @@ FRONTEND_DEVELOPER = RoleRubric(
                 "application entry point."
             ),
             evidence_needed=("Source files", "package.json"),
+            solution=(
+                "Scaffold a frontend with a package manifest, a source directory, and one "
+                "documented command that starts the development server."
+            ),
+            template=FRONTEND_SCAFFOLD_TEMPLATE,
         ),
         RubricRequirement(
             key="frontend.framework",
@@ -143,6 +375,11 @@ FRONTEND_DEVELOPER = RoleRubric(
                 "how to run it."
             ),
             evidence_needed=("Framework dependency", "Component source", "Run instructions"),
+            solution=(
+                "Declare React, Vue, Svelte, or Angular in the package manifest and build a "
+                "small interactive component that renders state and handles a user action."
+            ),
+            template=PACKAGE_JSON_TEMPLATE,
         ),
         RubricRequirement(
             key="frontend.testing",
@@ -155,6 +392,11 @@ FRONTEND_DEVELOPER = RoleRubric(
                 "runnable with one documented command."
             ),
             evidence_needed=("Test files", "Vitest/Jest dependency or configuration"),
+            solution=(
+                "Add Vitest or Jest with Testing Library and cover one component render and "
+                "one interaction path, then wire `npm test` as the single test command."
+            ),
+            template=VITEST_TEMPLATE,
         ),
         RubricRequirement(
             key="frontend.styling",
@@ -166,6 +408,11 @@ FRONTEND_DEVELOPER = RoleRubric(
                 "Add CSS modules, Sass, or a utility framework with themed, reusable styles."
             ),
             evidence_needed=("Style files", "Styling dependency"),
+            solution=(
+                "Add CSS modules, Sass, or a utility framework and build a small set of "
+                "reusable, themed components with consistent spacing and tokens."
+            ),
+            template=STYLING_TEMPLATE,
         ),
         RubricRequirement(
             key="frontend.typescript",
@@ -175,6 +422,11 @@ FRONTEND_DEVELOPER = RoleRubric(
             action_title="Adopt TypeScript",
             action_detail=("Add a tsconfig.json and type the core data flow of the application."),
             evidence_needed=("tsconfig.json", "TypeScript source files"),
+            solution=(
+                "Add a strict `tsconfig.json` and convert the core data flow of the app to "
+                "typed TypeScript modules."
+            ),
+            template=TSCONFIG_TEMPLATE,
         ),
         RubricRequirement(
             key="automation.github_actions",
@@ -187,6 +439,11 @@ FRONTEND_DEVELOPER = RoleRubric(
                 "static checks."
             ),
             evidence_needed=(".github/workflows/*.yml",),
+            solution=(
+                "Commit a GitHub Actions workflow that installs dependencies, runs the test "
+                "suite, and runs static checks on every push and pull request."
+            ),
+            template=CI_TEMPLATE,
         ),
         RubricRequirement(
             key="delivery.container",
@@ -198,6 +455,11 @@ FRONTEND_DEVELOPER = RoleRubric(
                 "Add a production-focused Dockerfile or Compose setup with documented startup."
             ),
             evidence_needed=("Dockerfile or Compose configuration",),
+            solution=(
+                "Add a multi-stage Dockerfile that builds static assets and serves them from a "
+                "non-root user with a documented start command."
+            ),
+            template=DOCKERFILE_TEMPLATE,
         ),
         RubricRequirement(
             key="documentation.project",
@@ -210,6 +472,11 @@ FRONTEND_DEVELOPER = RoleRubric(
                 "tradeoffs."
             ),
             evidence_needed=("README or docs/ content",),
+            solution=(
+                "Write a README that explains the problem, setup and verify commands, "
+                "architecture, and the tradeoffs the project deliberately accepts."
+            ),
+            template=README_TEMPLATE,
         ),
     ),
 )
@@ -228,6 +495,11 @@ DEVOPS_ENGINEER = RoleRubric(
                 "Add a production-focused Dockerfile or Compose setup with documented startup."
             ),
             evidence_needed=("Dockerfile or Compose configuration",),
+            solution=(
+                "Add a production-focused Dockerfile or Compose setup with pinned base images, "
+                "a non-root user, health checks, and a documented startup."
+            ),
+            template=DOCKERFILE_TEMPLATE,
         ),
         RubricRequirement(
             key="infrastructure.ci",
@@ -240,6 +512,11 @@ DEVOPS_ENGINEER = RoleRubric(
                 "static checks."
             ),
             evidence_needed=(".github/workflows/*.yml",),
+            solution=(
+                "Commit a GitHub Actions workflow that installs dependencies, runs the test "
+                "suite, and runs static checks on every push and pull request."
+            ),
+            template=CI_TEMPLATE,
         ),
         RubricRequirement(
             key="infrastructure.as_code",
@@ -252,6 +529,12 @@ DEVOPS_ENGINEER = RoleRubric(
                 "reproducible infrastructure."
             ),
             evidence_needed=("Infrastructure manifest", "Apply or plan documentation"),
+            solution=(
+                "Commit a Terraform, CloudFormation, Ansible, or Kubernetes manifest that "
+                "describes a small reproducible infrastructure, and document the apply or plan "
+                "command."
+            ),
+            template=TERRAFORM_TEMPLATE,
         ),
         RubricRequirement(
             key="infrastructure.observability",
@@ -263,6 +546,11 @@ DEVOPS_ENGINEER = RoleRubric(
                 "Expose structured logs, metrics, or tracing from the application or its runtime."
             ),
             evidence_needed=("Observability config", "Log or metric exporter source"),
+            solution=(
+                "Expose structured logs, metrics, or tracing from the app and commit the "
+                "scraper or exporter configuration that collects them."
+            ),
+            template=OBSERVABILITY_TEMPLATE,
         ),
         RubricRequirement(
             key="infrastructure.secrets",
@@ -275,6 +563,11 @@ DEVOPS_ENGINEER = RoleRubric(
                 "only example values."
             ),
             evidence_needed=("Secret manager reference", ".env.example or equivalent"),
+            solution=(
+                "Read secrets from environment variables or a secret manager, and commit only "
+                "an `.env.example` with placeholder values."
+            ),
+            template=SECRETS_TEMPLATE,
         ),
         RubricRequirement(
             key="infrastructure.servicing",
@@ -286,6 +579,11 @@ DEVOPS_ENGINEER = RoleRubric(
                 "Add a service, deployment, or platform configuration with clear run steps."
             ),
             evidence_needed=("Deployment config", "Run and rollback steps"),
+            solution=(
+                "Add a service or deployment definition (platform config, Docker Compose, or "
+                "Kubernetes) with documented run and rollback steps."
+            ),
+            template=DEPLOYMENT_TEMPLATE,
         ),
         RubricRequirement(
             key="documentation.project",
@@ -298,6 +596,11 @@ DEVOPS_ENGINEER = RoleRubric(
                 "tradeoffs."
             ),
             evidence_needed=("README or docs/ content",),
+            solution=(
+                "Write a README that explains the problem, setup and verify commands, "
+                "architecture, and the tradeoffs the project deliberately accepts."
+            ),
+            template=README_TEMPLATE,
         ),
     ),
 )

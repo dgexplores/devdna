@@ -983,6 +983,145 @@ footer p {
   font-size: 0.66rem;
 }
 
+.action-solution {
+  margin-top: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.action-solution summary {
+  padding: 0.7rem 0.9rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.action-solution pre {
+  max-height: 420px;
+  margin: 0;
+  padding: 0.9rem;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+/* ---------- Project context ---------- */
+
+.context-section {
+  margin-top: 3.5rem;
+}
+
+.context-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.2rem;
+}
+
+.context-block {
+  padding: 1.3rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.context-block h3 {
+  margin: 0 0 0.9rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lang-bars {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.lang-row {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr) 2.6rem;
+  gap: 0.6rem;
+  align-items: center;
+  font-size: 0.74rem;
+}
+
+.lang-name {
+  overflow: hidden;
+  font-family: var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lang-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+
+.lang-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.lang-share {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  text-align: right;
+}
+
+.org-chips,
+.tech-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.org-chip,
+.tech-chip {
+  padding: 0.42rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+
+.tech-chip {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: var(--accent-soft);
+}
+
+/* ---------- README style switcher ---------- */
+
+.style-switcher {
+  display: flex;
+  gap: 0.45rem;
+  margin: 1.6rem 0 0.6rem;
+}
+
+.style-tab {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.style-tab-active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: var(--accent-soft);
+}
+
 .empty-note {
   padding: 1.4rem;
   border: 1px solid color-mix(in srgb, var(--positive) 35%, var(--line));
@@ -1656,7 +1795,8 @@ footer p {
   .home-features,
   .home-workflow ol,
   .cv-groups,
-  .report-tools {
+  .report-tools,
+  .context-grid {
     grid-template-columns: 1fr;
   }
 

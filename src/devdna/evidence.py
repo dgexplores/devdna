@@ -17,6 +17,66 @@ SCHEMA_VERSION = "1"
 ANALYZER_VERSION = "evidence-v1"
 DEPENDENCY_SEPARATOR = re.compile(r"[\s<>=!~;\[]")
 
+TECHNOLOGY_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("FastAPI", ("fastapi",)),
+    ("Django", ("django",)),
+    ("Flask", ("flask",)),
+    ("SQLAlchemy", ("sqlalchemy", "sqlmodel")),
+    ("Alembic", ("alembic",)),
+    ("Pydantic", ("pydantic",)),
+    ("PostgreSQL", ("psycopg", "psycopg2", "asyncpg")),
+    ("MongoDB", ("pymongo", "motor")),
+    ("Redis", ("redis", "redis-py")),
+    ("Celery", ("celery",)),
+    ("pytest", ("pytest",)),
+    ("React", ("react", "react-dom")),
+    ("Vue", ("vue",)),
+    ("Svelte", ("svelte",)),
+    ("Angular", ("@angular/core",)),
+    ("TypeScript", ("typescript",)),
+    ("Tailwind CSS", ("tailwindcss",)),
+    ("Vitest", ("vitest",)),
+    ("Jest", ("jest",)),
+    ("Playwright", ("playwright",)),
+    ("Cypress", ("cypress",)),
+    ("GraphQL", ("graphene", "strawberry-graphql", "graphql")),
+    ("NumPy", ("numpy",)),
+    ("Pandas", ("pandas",)),
+    ("Terraform", ("terraform",)),
+    ("Ansible", ("ansible",)),
+    ("Kubernetes", ("kubernetes",)),
+    ("Prometheus", ("prometheus",)),
+    ("Grafana", ("grafana",)),
+    ("OpenTelemetry", ("opentelemetry",)),
+)
+
+PATH_TECHNOLOGY_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Docker", ("dockerfile", "docker-compose", "compose.")),
+    ("GitHub Actions", (".github/workflows/",)),
+    ("Kubernetes", ("k8s", "kubernetes", "helm")),
+    ("Terraform", (".tf", "terraform")),
+    ("Ansible", ("ansible/",)),
+    ("Prometheus", ("prometheus",)),
+    ("Grafana", ("grafana",)),
+    ("OpenTelemetry", ("opentelemetry", "otel")),
+)
+
+
+def extract_technologies(
+    dependencies: Iterable[str],
+    file_paths: Iterable[str],
+) -> list[str]:
+    found: set[str] = set()
+    dependency_set = set(dependencies)
+    for technology, hints in TECHNOLOGY_HINTS:
+        if any(hint in dependency_set for hint in hints):
+            found.add(technology)
+    lower_paths = [path.lower() for path in file_paths]
+    for technology, hints in PATH_TECHNOLOGY_HINTS:
+        if any(hint in path for path in lower_paths for hint in hints):
+            found.add(technology)
+    return sorted(found)
+
 
 def normalize_dependency(value: str) -> str | None:
     candidate = DEPENDENCY_SEPARATOR.split(value.strip(), maxsplit=1)[0]
@@ -361,11 +421,22 @@ def analyze_evidence(snapshot: GitHubSnapshot, target_role: str) -> EvidenceSnap
         )
         for item in analyze_repository(inspection, target_role)
     ]
+    technologies = sorted(
+        {
+            technology
+            for inspection in snapshot.inspections
+            for technology in extract_technologies(
+                inspection.dependencies,
+                inspection.file_paths,
+            )
+        }
+    )
     return EvidenceSnapshot(
         schema_version=SCHEMA_VERSION,
         analyzer_version=ANALYZER_VERSION,
         target_role=target_role,
         rubric_version=rubric.version,
         repositories_analyzed=len(snapshot.inspections),
+        technologies=technologies,
         items=items,
     )

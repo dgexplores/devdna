@@ -151,8 +151,12 @@ def test_get_snapshot_paginates_until_it_finds_eligible_repositories() -> None:
             return httpx2.Response(200, json=PROFILE)
         if request.url.path == "/users/octocat/events/public":
             return httpx2.Response(200, json=[])
+        if request.url.path == "/users/octocat/orgs":
+            return httpx2.Response(200, json=[{"login": "github"}])
         if request.url.path == "/repos/octocat/new/git/trees/main":
             return httpx2.Response(200, json={"tree": [], "truncated": False})
+        if request.url.path == "/repos/octocat/new/languages":
+            return httpx2.Response(200, json={"Python": 500})
         if request.url.params.get("page") == "2":
             repository = {**REPOSITORY, "id": 4, "name": "new", "full_name": "octocat/new"}
             return httpx2.Response(
@@ -179,6 +183,8 @@ def test_get_snapshot_paginates_until_it_finds_eligible_repositories() -> None:
 
     assert [repository.name for repository in snapshot.repositories] == ["new"]
     assert snapshot.rate_limit_remaining == 57
+    assert snapshot.organizations == ["github"]
+    assert snapshot.repositories[0].languages == {"Python": 500}
 
 
 def test_get_snapshot_collects_file_tree_and_manifest_dependencies() -> None:
@@ -194,6 +200,8 @@ test = ["pytest>=8"]
         if request.url.path == "/users/octocat":
             return httpx2.Response(200, json=PROFILE)
         if request.url.path == "/users/octocat/events/public":
+            return httpx2.Response(200, json=[])
+        if request.url.path == "/users/octocat/orgs":
             return httpx2.Response(200, json=[])
         if request.url.path == "/users/octocat/repos":
             return httpx2.Response(200, json=[REPOSITORY])
@@ -223,6 +231,12 @@ test = ["pytest>=8"]
                 },
                 headers={"x-ratelimit-remaining": "55"},
             )
+        if request.url.path == "/repos/octocat/project/languages":
+            return httpx2.Response(
+                200,
+                json={"Python": 900, "HTML": 100},
+                headers={"x-ratelimit-remaining": "55"},
+            )
         raise AssertionError(f"unexpected request: {request.url}")
 
     snapshot = asyncio.run(
@@ -236,6 +250,7 @@ test = ["pytest>=8"]
     assert inspection.dependencies == ["fastapi", "pytest", "sqlalchemy"]
     assert inspection.tree_truncated is False
     assert snapshot.rate_limit_remaining == 55
+    assert snapshot.repositories[0].languages == {"Python": 900, "HTML": 100}
 
 
 def test_get_snapshot_returns_partial_when_file_tree_fails() -> None:

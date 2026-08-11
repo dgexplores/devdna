@@ -10,6 +10,7 @@ from devdna.schemas import (
     EvidenceSource,
     GitHubContributions,
     GitHubProfile,
+    GitHubRepository,
 )
 from devdna.web import render_report_page
 
@@ -77,6 +78,9 @@ def test_generate_report_maps_evidence_to_strengths_gaps_and_actions() -> None:
     ]
     assert [action.priority for action in report.actions] == [1, 2, 3, 4, 5]
     assert report.strengths[0].sources[0].path == "pyproject.toml"
+    assert all(action.solution for action in report.actions)
+    assert all(action.template for action in report.actions)
+    assert "fastapi" in (report.actions[0].template or "").lower()
 
 
 def test_generate_partial_report_does_not_present_missing_data_as_absence() -> None:
@@ -114,6 +118,44 @@ def test_render_report_page_escapes_source_paths_and_exposes_evidence() -> None:
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
     assert "/v1/analyses/analysis-id/report" in html
+
+
+def test_render_report_page_shows_context_blocks_and_starter_solutions() -> None:
+    report = generate_report(evidence_snapshot(), "completed")
+
+    html = render_report_page(
+        "octocat",
+        "analysis-id",
+        report,
+        repositories=[
+            GitHubRepository.model_validate(
+                {
+                    "id": 1,
+                    "name": "backend",
+                    "full_name": "octocat/backend",
+                    "html_url": "https://github.com/octocat/backend",
+                    "fork": False,
+                    "archived": False,
+                    "disabled": False,
+                    "size": 1000,
+                    "stargazers_count": 0,
+                    "forks_count": 0,
+                    "open_issues_count": 0,
+                    "default_branch": "main",
+                    "created_at": "2020-01-01T00:00:00Z",
+                    "updated_at": "2026-01-01T00:00:00Z",
+                    "languages": {"Python": 900, "HTML": 100},
+                }
+            )
+        ],
+        organizations=["acme"],
+    )
+
+    assert "Project context" in html
+    assert "acme" in html
+    assert "Python" in html
+    assert "Starter solution" in html
+    assert "pyproject.toml" in html
 
 
 def test_render_report_page_without_contributions_does_not_500() -> None:

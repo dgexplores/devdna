@@ -216,6 +216,7 @@ async def get_analysis_report(
 async def get_analysis_readme(
     analysis_id: str,
     session: SessionDependency,
+    style: str = Query(default="minimal", pattern="^(minimal|badges|centered)$"),
 ) -> ReadmeDraft:
     analysis = await session.get(AnalysisRun, analysis_id)
     if analysis is None:
@@ -226,7 +227,7 @@ async def get_analysis_readme(
             detail="README draft is not ready",
         )
     report = ReportSnapshot.model_validate(analysis.report_snapshot)
-    return generate_profile_readme(analysis.github_username, report)
+    return generate_profile_readme(analysis.github_username, report, style=style)
 
 
 @router.get("/{analysis_id}/learning", response_model=LearningPlan)

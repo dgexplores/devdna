@@ -83,6 +83,8 @@ def generate_report(
                 title=requirement.action_title,
                 rationale=requirement.action_detail,
                 evidence_needed=list(requirement.evidence_needed),
+                solution=requirement.solution or None,
+                template=requirement.template,
             )
         )
 
@@ -97,6 +99,7 @@ def generate_report(
         alignment_label=alignment_label(len(strengths), len(rubric.requirements)),
         requirements_met=len(strengths),
         requirements_total=len(rubric.requirements),
+        tech_stack=evidence.technologies,
         strengths=strengths,
         gaps=gaps,
         actions=actions,

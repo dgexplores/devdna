@@ -67,7 +67,9 @@ class GitHubRepository(BaseModel):
     archived: bool
     disabled: bool
     language: str | None = None
+    license_name: str | None = None
     topics: list[str] = Field(default_factory=list)
+    languages: dict[str, int] = Field(default_factory=dict)
     size: int
     stargazers_count: int
     forks_count: int
@@ -114,6 +116,7 @@ class GitHubSnapshot(BaseModel):
     repositories: list[GitHubRepository] = Field(default_factory=list)
     inspections: list[RepositoryInspection] = Field(default_factory=list)
     contributions: GitHubContributions | None = None
+    organizations: list[str] = Field(default_factory=list)
     rate_limit_remaining: int | None
     rate_limit_reset: int | None
 
@@ -138,6 +141,7 @@ class EvidenceSnapshot(BaseModel):
     target_role: str
     rubric_version: str
     repositories_analyzed: int
+    technologies: list[str] = Field(default_factory=list)
     items: list[EvidenceItem] = Field(default_factory=list)
 
 
@@ -161,6 +165,8 @@ class ReportAction(BaseModel):
     title: str
     rationale: str
     evidence_needed: list[str]
+    solution: str | None = None
+    template: str | None = None
 
 
 class ReportSnapshot(BaseModel):
@@ -174,6 +180,7 @@ class ReportSnapshot(BaseModel):
     alignment_label: str
     requirements_met: int
     requirements_total: int
+    tech_stack: list[str] = Field(default_factory=list)
     strengths: list[ReportStrength] = Field(default_factory=list)
     gaps: list[ReportGap] = Field(default_factory=list)
     actions: list[ReportAction] = Field(default_factory=list)
@@ -189,6 +196,7 @@ class ReadmeDraft(BaseModel):
     schema_version: str
     generator_version: str
     github_username: str
+    style: str = "minimal"
     repositories: list[ReadmeRepository] = Field(default_factory=list)
     evidence_sources: list[EvidenceSource] = Field(default_factory=list)
     markdown: str

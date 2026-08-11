@@ -3,11 +3,16 @@ from collections import defaultdict
 from devdna.schemas import EvidenceSource, ReadmeDraft, ReadmeRepository, ReportSnapshot
 
 README_SCHEMA_VERSION = "1"
-README_GENERATOR_VERSION = "evidence-readme-v1"
+README_GENERATOR_VERSION = "evidence-readme-v2"
+README_STYLES = ("minimal", "badges", "centered")
 
 
 def repository_url(repository: str) -> str:
     return f"https://github.com/{repository}"
+
+
+def badge(label: str, message: str, color: str = "2b7489") -> str:
+    return f"https://img.shields.io/badge/{label}-{message}-{color}"
 
 
 def unique_evidence_sources(report: ReportSnapshot) -> list[EvidenceSource]:
@@ -18,7 +23,74 @@ def unique_evidence_sources(report: ReportSnapshot) -> list[EvidenceSource]:
     return [sources[key] for key in sorted(sources)]
 
 
-def generate_profile_readme(username: str, report: ReportSnapshot) -> ReadmeDraft:
+def technology_badges(report: ReportSnapshot, max_badges: int = 8) -> list[str]:
+    return [
+        badge("tech", technology, "informational") for technology in report.tech_stack[:max_badges]
+    ]
+
+
+def metrics_badges(username: str) -> list[str]:
+    return [
+        badge("", "open source", "brightgreen"),
+        badge("focus", "production quality", "blueviolet"),
+        badge("status", "improving", "yellow"),
+        f"https://img.shields.io/badge/GitHub-@{username}-181717?logo=github",
+    ]
+
+
+def render_badge_line(badges: list[str]) -> str:
+    return " ".join(f"![badge]({url})" for url in badges)
+
+
+def render_header(username: str, report: ReportSnapshot, style: str) -> list[str]:
+    profile_summary = (
+        "Python backend developer with public project evidence across "
+        + ", ".join(strength.title.lower() for strength in report.strengths[:3])
+        + "."
+        if report.strengths
+        else "Building toward Python backend development through public, reviewable projects."
+    )
+    title = f"# {username}"
+    if style == "centered":
+        lines = [
+            f'<div align="center">\n\n## {username}',
+            "",
+            profile_summary,
+            "",
+            render_badge_line(metrics_badges(username)),
+            "",
+            render_badge_line(technology_badges(report)),
+            "",
+        ]
+        if report.tech_stack:
+            lines.extend(
+                [
+                    f"![GitHub stats](https://github-readme-stats.vercel.app/api?username={username}&show_icons=true&hide_border=true)",
+                    "",
+                ]
+            )
+        lines.extend(
+            [
+                f"![Top languages](https://github-readme-stats.vercel.app/api/top-langs/?username={username}&layout=compact&hide_border=true)",
+                "",
+                "</div>",
+                "",
+            ]
+        )
+        return lines
+    lines = [title, "", profile_summary, ""]
+    if style == "badges":
+        lines.extend([render_badge_line(metrics_badges(username)), ""])
+        if report.tech_stack:
+            lines.extend([render_badge_line(technology_badges(report)), ""])
+    return lines
+
+
+def generate_profile_readme(
+    username: str,
+    report: ReportSnapshot,
+    style: str = "minimal",
+) -> ReadmeDraft:
     evidence_by_repository: dict[str, set[str]] = defaultdict(set)
     for strength in report.strengths:
         for repository_name in strength.repositories:
@@ -34,19 +106,7 @@ def generate_profile_readme(username: str, report: ReportSnapshot) -> ReadmeDraf
     ]
     sources = unique_evidence_sources(report)
 
-    profile_summary = (
-        "Python backend developer with public project evidence across "
-        + ", ".join(strength.title.lower() for strength in report.strengths[:3])
-        + "."
-        if report.strengths
-        else "Building toward Python backend development through public, reviewable projects."
-    )
-    lines = [
-        f"# {username}",
-        "",
-        profile_summary,
-        "",
-    ]
+    lines = render_header(username, report, style)
     if repositories:
         lines.extend(["## Selected projects", ""])
         for draft_repository in repositories[:4]:
@@ -85,5 +145,6 @@ def generate_profile_readme(username: str, report: ReportSnapshot) -> ReadmeDraf
         github_username=username,
         repositories=repositories,
         evidence_sources=sources,
+        style=style,
         markdown="\n".join(lines),
     )

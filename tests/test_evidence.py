@@ -1,4 +1,4 @@
-from devdna.evidence import analyze_evidence, extract_dependencies
+from devdna.evidence import analyze_evidence, extract_dependencies, extract_technologies
 from devdna.rubrics import get_rubric
 from devdna.schemas import GitHubProfile, GitHubSnapshot, RepositoryInspection
 
@@ -176,6 +176,56 @@ def test_devops_analyzer_detects_infrastructure_as_code() -> None:
     assert "automation.github_actions" in by_key
     assert "delivery.container" in by_key
     assert "documentation.project" in by_key
+
+
+def test_extract_technologies_from_dependencies_and_paths() -> None:
+    technologies = extract_technologies(
+        ["fastapi", "sqlalchemy", "pytest", "redis"],
+        [
+            "Dockerfile",
+            ".github/workflows/ci.yml",
+            "src/main.py",
+            "prometheus.yml",
+        ],
+    )
+
+    assert technologies == [
+        "Docker",
+        "FastAPI",
+        "GitHub Actions",
+        "Prometheus",
+        "Redis",
+        "SQLAlchemy",
+        "pytest",
+    ]
+
+
+def test_analyze_evidence_collects_technologies_across_repositories() -> None:
+    snapshot = GitHubSnapshot(
+        profile=PROFILE,
+        inspections=[
+            RepositoryInspection(
+                repository_full_name="octocat/api",
+                default_branch="main",
+                file_paths=["pyproject.toml", "src/main.py"],
+                manifest_paths=["pyproject.toml"],
+                dependencies=["fastapi", "pytest"],
+            ),
+            RepositoryInspection(
+                repository_full_name="octocat/site",
+                default_branch="main",
+                file_paths=["package.json", "src/App.jsx"],
+                manifest_paths=["package.json"],
+                dependencies=["react", "vitest"],
+            ),
+        ],
+        rate_limit_remaining=50,
+        rate_limit_reset=123456,
+    )
+
+    evidence = analyze_evidence(snapshot, "python_backend_developer")
+
+    assert evidence.technologies == ["FastAPI", "React", "Vitest", "pytest"]
 
 
 def test_role_registry_has_supported_roles() -> None:
