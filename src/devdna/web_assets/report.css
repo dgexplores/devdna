@@ -33,6 +33,9 @@
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
   --shadow-sm: 0 8px 24px rgba(0, 0, 0, 0.35);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 140ms;
+  --dur: 220ms;
+  --dur-slow: 360ms;
   --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
   --display: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
@@ -210,6 +213,28 @@ h3 {
 
 .button:active {
   transform: scale(0.97);
+}
+
+.feature-card,
+.report-tools a,
+.history-row a,
+.learning-item,
+.candidate-row,
+.style-tab,
+.org-chip,
+.tech-chip,
+.row-action,
+.text-button,
+.status-label,
+.cv-skill,
+.spine-marker,
+.lang-row,
+.week-bar,
+.home-links a,
+.nav-link {
+  transition: background-color var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out), box-shadow var(--dur) var(--ease-out);
 }
 
 /* ---------- Topbar / Nav ---------- */
@@ -991,11 +1016,40 @@ footer p {
 }
 
 .action-solution summary {
-  padding: 0.7rem 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.9rem;
   cursor: pointer;
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--accent);
+  list-style: none;
+  transition: color var(--dur) var(--ease-out), background-color var(--dur) var(--ease-out);
+}
+
+.action-solution summary::-webkit-details-marker {
+  display: none;
+}
+
+.action-solution summary:hover {
+  color: var(--accent-hover);
+  background: color-mix(in srgb, var(--surface-3) 55%, var(--surface-2));
+}
+
+.action-solution summary::after {
+  width: 7px;
+  height: 7px;
+  margin-right: 0.15rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  content: "";
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.action-solution[open] summary::after {
+  transform: rotate(45deg);
 }
 
 .action-solution pre {
@@ -1031,6 +1085,7 @@ footer p {
 
 .context-block h3 {
   margin: 0 0 0.9rem;
+  color: var(--muted);
   font-size: 0.8rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1102,23 +1157,32 @@ footer p {
 /* ---------- README style switcher ---------- */
 
 .style-switcher {
-  display: flex;
-  gap: 0.45rem;
-  margin: 1.6rem 0 0.6rem;
+  display: inline-flex;
+  gap: 2px;
+  margin: 1.2rem 0 0.4rem;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
 }
 
 .style-tab {
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  padding: 0.55rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 7px;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   font-weight: 700;
+  text-decoration: none;
+}
+
+.style-tab:hover {
+  color: var(--ink);
+  background: var(--surface-2);
 }
 
 .style-tab-active {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
   background: var(--accent-soft);
 }
 
@@ -1726,11 +1790,37 @@ footer p {
   .report-tools a:hover,
   .history-row a:hover {
     border-color: var(--accent);
+    background: var(--surface-3);
+    box-shadow: var(--shadow-sm);
     transform: translateY(-2px);
+  }
+
+.report-tools a strong {
+  transition: color var(--dur) var(--ease-out);
+}
+
+.report-tools a:hover strong {
+  color: var(--accent);
+}
+
+  .evidence-row:hover .spine-marker {
+    transform: scale(1.18);
+  }
+
+  .org-chip:hover,
+  .tech-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-1px);
   }
 
   .text-button:hover {
     color: var(--accent);
+  }
+
+  .row-action:hover {
+    text-decoration: underline;
+    text-underline-offset: 4px;
   }
 }
 
@@ -1751,6 +1841,62 @@ footer p {
     animation-delay: 90ms;
   }
 
+  .coverage-number {
+    animation: pop 340ms var(--ease-out) both;
+    animation-delay: 140ms;
+  }
+
+  .evidence-spine > .evidence-row,
+  .action-list > .action-row {
+    animation: enter 420ms var(--ease-out) both;
+  }
+
+  .evidence-spine > .evidence-row:nth-child(2),
+  .action-list > .action-row:nth-child(2) {
+    animation-delay: 45ms;
+  }
+
+  .evidence-spine > .evidence-row:nth-child(3),
+  .action-list > .action-row:nth-child(3) {
+    animation-delay: 90ms;
+  }
+
+  .evidence-spine > .evidence-row:nth-child(4),
+  .action-list > .action-row:nth-child(4) {
+    animation-delay: 135ms;
+  }
+
+  .evidence-spine > .evidence-row:nth-child(5),
+  .action-list > .action-row:nth-child(5) {
+    animation-delay: 180ms;
+  }
+
+  .evidence-spine > .evidence-row:nth-child(6),
+  .action-list > .action-row:nth-child(6) {
+    animation-delay: 225ms;
+  }
+
+  .lang-fill {
+    transform-origin: left;
+    animation: grow 520ms var(--ease-out) both;
+  }
+
+  .lang-row:nth-child(2) .lang-fill {
+    animation-delay: 60ms;
+  }
+
+  .lang-row:nth-child(3) .lang-fill {
+    animation-delay: 120ms;
+  }
+
+  .lang-row:nth-child(4) .lang-fill {
+    animation-delay: 180ms;
+  }
+
+  .action-solution[open] > div {
+    animation: reveal 240ms var(--ease-out);
+  }
+
   .pending-signal span {
     animation: pulse 900ms var(--ease-out) infinite alternate;
   }
@@ -1768,6 +1914,26 @@ footer p {
   from {
     opacity: 0;
     transform: translateY(16px);
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
   }
 }
 

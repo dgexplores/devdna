@@ -53,7 +53,7 @@ from devdna.web_sessions import SESSION_COOKIE, create_web_session, verify_web_s
 
 router = APIRouter(tags=["web"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
-ASSET_VERSION = "4"
+ASSET_VERSION = "5"
 
 
 def week_width(week: object) -> int:
@@ -564,11 +564,14 @@ def render_readme_page(username: str, analysis_id: str, draft: ReadmeDraft) -> s
   </section>
   <section class="style-switcher" aria-label="README style">
     <a class="style-tab{" style-tab-active" if draft.style == "minimal" else ""}"
-      href="/reports/{escape(analysis_id, quote=True)}/readme?style=minimal">Minimal</a>
+      href="/reports/{escape(analysis_id, quote=True)}/readme?style=minimal"
+      aria-current="{"page" if draft.style == "minimal" else "false"}">Minimal</a>
     <a class="style-tab{" style-tab-active" if draft.style == "badges" else ""}"
-      href="/reports/{escape(analysis_id, quote=True)}/readme?style=badges">Badges</a>
+      href="/reports/{escape(analysis_id, quote=True)}/readme?style=badges"
+      aria-current="{"page" if draft.style == "badges" else "false"}">Badges</a>
     <a class="style-tab{" style-tab-active" if draft.style == "centered" else ""}"
-      href="/reports/{escape(analysis_id, quote=True)}/readme?style=centered">Centered</a>
+      href="/reports/{escape(analysis_id, quote=True)}/readme?style=centered"
+      aria-current="{"page" if draft.style == "centered" else "false"}">Centered</a>
   </section>
   <section class="readme-workspace" aria-labelledby="draft-title">
     <div class="readme-guidance">
