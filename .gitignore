@@ -12,3 +12,9 @@ htmlcov/
 dist/
 build/
 backups/
+.DS_Store
+.freebuff/
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal

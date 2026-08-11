@@ -173,9 +173,7 @@ FRONTEND_DEVELOPER = RoleRubric(
             description="TypeScript is configured and used in the application.",
             evidence_keys=("frontend.typescript",),
             action_title="Adopt TypeScript",
-            action_detail=(
-                "Add a tsconfig.json and type the core data flow of the application."
-            ),
+            action_detail=("Add a tsconfig.json and type the core data flow of the application."),
             evidence_needed=("tsconfig.json", "TypeScript source files"),
         ),
         RubricRequirement(

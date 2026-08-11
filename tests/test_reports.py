@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 
 from devdna.reports import generate_report
@@ -125,8 +127,8 @@ def test_render_report_page_without_contributions_does_not_500() -> None:
         public_repos=5,
         followers=10,
         following=3,
-        created_at="2020-01-01T00:00:00Z",
-        updated_at="2020-01-01T00:00:00Z",
+        created_at=datetime(2020, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2020, 1, 1, tzinfo=UTC),
     )
 
     html = render_report_page(
@@ -152,13 +154,13 @@ def test_render_report_page_with_empty_open_source_repos_does_not_500() -> None:
         public_repos=5,
         followers=10,
         following=3,
-        created_at="2020-01-01T00:00:00Z",
-        updated_at="2020-01-01T00:00:00Z",
+        created_at=datetime(2020, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2020, 1, 1, tzinfo=UTC),
     )
     contributions = GitHubContributions(
         schema_version="1",
-        sample_start="2026-07-01T00:00:00Z",
-        sample_end="2026-07-08T00:00:00Z",
+        sample_start=datetime(2026, 7, 1, tzinfo=UTC),
+        sample_end=datetime(2026, 7, 8, tzinfo=UTC),
         days_span=7,
         total_events=0,
         push_events=0,

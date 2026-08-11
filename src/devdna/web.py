@@ -66,6 +66,8 @@ def role_options(selected: str = "python_backend_developer") -> str:
         f"{role_label(role)}</option>"
         for role in supported_roles()
     )
+
+
 FAVICON = (
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E"
     "%3Crect width='64' height='64' rx='12' fill='%232457d6'/%3E"
@@ -351,9 +353,7 @@ def dashboard_response(
     status_code: int = status.HTTP_200_OK,
     authenticated: bool = False,
 ) -> HTMLResponse:
-    error_markup = (
-        f'<p class="form-error" role="alert">{escape(error)}</p>' if error else ""
-    )
+    error_markup = f'<p class="form-error" role="alert">{escape(error)}</p>' if error else ""
     actions = {
         "profile": "Analyze my profile",
         "readme": "Improve my README",
@@ -362,7 +362,7 @@ def dashboard_response(
     }
     action_options = "".join(
         f'<label class="action-option"><input type="radio" name="action" value="{key}"'
-        f'{" checked" if key == action else ""}><span>{label}</span></label>'
+        f"{' checked' if key == action else ''}><span>{label}</span></label>"
         for key, label in actions.items()
     )
     sign_out = (
@@ -922,8 +922,8 @@ def render_profile_overview(
             (
                 '<div class="week-bar">'
                 f'<div class="week-total" style="width:{week_width(w)}%"></div>'
-                f'<span>{escape(w.week_start[5:])}</span>'
-                f'<small>{w.push_count + w.pull_request_count}</small>'
+                f"<span>{escape(w.week_start[5:])}</span>"
+                f"<small>{w.push_count + w.pull_request_count}</small>"
                 "</div>"
             )
             for w in weekly
@@ -939,11 +939,11 @@ def render_profile_overview(
         open_source_block = ""
 
     strengths = "".join(
-        f'<li><strong>{escape(item.title)}</strong><span>{escape(item.summary)}</span></li>'
+        f"<li><strong>{escape(item.title)}</strong><span>{escape(item.summary)}</span></li>"
         for item in report.strengths
     )
     gaps = "".join(
-        f'<li><strong>{escape(item.title)}</strong><span>{escape(item.explanation)}</span></li>'
+        f"<li><strong>{escape(item.title)}</strong><span>{escape(item.explanation)}</span></li>"
         for item in report.gaps
     )
     no_strengths = '<li class="empty-note">No verified strengths yet.</li>'

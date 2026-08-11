@@ -2,6 +2,7 @@ import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -110,6 +111,16 @@ def create_app(
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
+        origin = request.headers.get("origin")
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and origin is not None:
+            origin_host = urlsplit(origin).netloc
+            if origin_host and origin_host != request.headers.get("host"):
+                response = JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={"detail": "Cross-origin requests are forbidden"},
+                )
+                add_security_headers(response, request.url.path)
+                return response
         content_length = request.headers.get("content-length")
         if request.method in {"POST", "PUT", "PATCH"} and content_length is None:
             response = JSONResponse(

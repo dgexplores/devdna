@@ -266,19 +266,33 @@ def test_create_and_get_analysis(tmp_path: Path) -> None:
     assert queue.jobs[0][1]["retry"].max == 2
 
 
+def test_cross_origin_mutation_is_rejected(tmp_path: Path) -> None:
+    client = create_test_client(tmp_path / "cross-origin.db", FakeQueue())
+    try:
+        response = client.post(
+            "/analyses",
+            data={"github_username": "octocat"},
+            headers={"Origin": "https://evil.example"},
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert response.status_code == 403
+
+
 def test_web_form_starts_analysis_and_redirects_to_progress(tmp_path: Path) -> None:
     queue = FakeQueue()
     client = create_test_client(tmp_path / "web-form.db", queue)
     try:
         home = client.get("/")
         dashboard = client.get("/app")
+        client.cookies.set(SESSION_COOKIE, web_session_cookie()[SESSION_COOKIE])
         submitted = client.post(
             "/app/analyze",
             data={
                 "github_username": "Octocat",
                 "action": "profile",
             },
-            cookies=web_session_cookie(),
             follow_redirects=False,
         )
         progress = client.get(submitted.headers["location"])
@@ -456,13 +470,13 @@ def test_recruiter_batch_creation_is_rate_limited(tmp_path: Path) -> None:
 def test_web_form_returns_inline_validation_error(tmp_path: Path) -> None:
     client = create_test_client(tmp_path / "web-form-invalid.db", FakeQueue())
     try:
+        client.cookies.set(SESSION_COOKIE, web_session_cookie()[SESSION_COOKIE])
         response = client.post(
             "/app/analyze",
             data={
                 "github_username": "-invalid--name",
                 "action": "profile",
             },
-            cookies=web_session_cookie(),
         )
     finally:
         client.__exit__(None, None, None)
@@ -486,10 +500,10 @@ def test_web_form_requires_web_session(tmp_path: Path) -> None:
     try:
         home = client.get("/")
         missing = client.post("/app/analyze", data=payload)
+        client.cookies.set(SESSION_COOKIE, web_session_cookie()[SESSION_COOKIE])
         allowed = client.post(
             "/app/analyze",
             data=payload,
-            cookies=web_session_cookie(),
             follow_redirects=False,
         )
         history = client.get("/history")
@@ -497,7 +511,7 @@ def test_web_form_requires_web_session(tmp_path: Path) -> None:
     finally:
         client.__exit__(None, None, None)
 
-    assert "id=\"clerk-sign-in\"" in home.text
+    assert 'id="clerk-sign-in"' in home.text
     assert missing.status_code == 401
     assert "Sign in with Clerk" in missing.text
     assert allowed.status_code == 303
@@ -720,9 +734,7 @@ def test_get_analysis_exposes_partial_result(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "partial"
     assert response.json()["profile_snapshot"]["profile"]["login"] == "octocat"
-    assert response.json()["evidence_snapshot"]["analyzer_version"] == (
-        "evidence-v1"
-    )
+    assert response.json()["evidence_snapshot"]["analyzer_version"] == ("evidence-v1")
     assert response.json()["error_message"] == "Repository collection failed"
     assert report_response.status_code == 200
     assert report_response.json()["collection_status"] == "partial"

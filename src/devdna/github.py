@@ -569,7 +569,6 @@ class GitHubClient:
             return None
         return aggregate_contributions(events, username, remaining, reset)
 
-
     async def get_snapshot(self, username: str) -> GitHubSnapshot:
         snapshot = await self.get_profile(username)
         try:

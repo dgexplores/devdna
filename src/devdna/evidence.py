@@ -100,9 +100,7 @@ class RepositoryAnalyzer:
         return first_path(self.paths, predicate)
 
     def shared(self) -> None:
-        workflow = self.first(
-            lambda path: self.lower[path].startswith(".github/workflows/")
-        )
+        workflow = self.first(lambda path: self.lower[path].startswith(".github/workflows/"))
         docker = self.first(
             lambda path: (
                 self.lower[path].split("/")[-1] == "dockerfile"
@@ -213,9 +211,7 @@ class RepositoryAnalyzer:
         source_file = self.first(
             lambda path: self.lower[path].endswith((".ts", ".tsx", ".js", ".jsx"))
         )
-        package_json = self.first(
-            lambda path: self.lower[path].split("/")[-1] == "package.json"
-        )
+        package_json = self.first(lambda path: self.lower[path].split("/")[-1] == "package.json")
         test_file = self.first(
             lambda path: (
                 self.lower[path].startswith(("test/", "tests/", "__tests__/"))
@@ -270,9 +266,7 @@ class RepositoryAnalyzer:
                 "A styling system is present in source.",
                 [style_file],
             )
-        if ts_config and self.first(
-            lambda path: self.lower[path].endswith((".ts", ".tsx"))
-        ):
+        if ts_config and self.first(lambda path: self.lower[path].endswith((".ts", ".tsx"))):
             self.add(
                 "frontend.typescript",
                 "frontend",

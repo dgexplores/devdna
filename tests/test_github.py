@@ -363,8 +363,10 @@ def test_aggregate_contributions_counts_own_and_open_source_activity() -> None:
 
 
 def test_aggregate_contributions_returns_none_when_empty() -> None:
-    result = GitHubClient(settings(), httpx2.MockTransport(lambda r: httpx2.Response(404))).get_contributions(
-        "octocat"
+    client = GitHubClient(
+        settings(),
+        httpx2.MockTransport(lambda r: httpx2.Response(404)),
     )
+    result = client.get_contributions("octocat")
 
     assert asyncio.run(result) is None
