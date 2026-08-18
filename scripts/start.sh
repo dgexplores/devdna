@@ -7,5 +7,5 @@ alembic upgrade head
 echo "Starting API..."
 exec uvicorn devdna.main:app \
   --host 0.0.0.0 \
-  --port "$PORT" \
+  --port "${PORT:-8000}" \
   --no-access-log

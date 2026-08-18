@@ -34,3 +34,24 @@ services:
         sync: false
       - key: DEVDNA_CLERK_WEBHOOK_SECRET
         sync: false
+
+  # RQ worker. Consumes the "devdna" queue; without it analyses stay queued forever.
+  - type: worker
+    name: devdna-worker
+    runtime: docker
+    repo: https://github.com/dgexplores/DevDNAv2.git
+    plan: free
+    region: oregon
+    dockerContext: .
+    dockerfilePath: Dockerfile.worker
+    envVars:
+      - key: DEVDNA_ENVIRONMENT
+        value: production
+      - key: DEVDNA_LOG_LEVEL
+        value: INFO
+      - key: DEVDNA_DATABASE_URL
+        sync: false
+      - key: DEVDNA_REDIS_URL
+        sync: false
+      - key: DEVDNA_GITHUB_TOKEN
+        sync: false
