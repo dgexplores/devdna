@@ -28,6 +28,48 @@ def report_with_python_evidence() -> EvidenceSnapshot:
     )
 
 
+def report_with_react_evidence() -> EvidenceSnapshot:
+    return EvidenceSnapshot(
+        schema_version="1",
+        analyzer_version="evidence-v1",
+        target_role="frontend_react_developer",
+        rubric_version="frontend_react_developer:v1",
+        repositories_analyzed=1,
+        items=[
+            EvidenceItem(
+                key="react.app",
+                category="frontend",
+                claim="React JSX source and a manifest are present.",
+                repository="octocat/react-app",
+                sources=[
+                    EvidenceSource(
+                        repository="octocat/react-app",
+                        path="package.json",
+                        url="https://github.com/octocat/react-app/blob/main/package.json",
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def test_readme_uses_react_role_header() -> None:
+    report = generate_report(report_with_react_evidence(), "completed")
+
+    draft = generate_profile_readme("octocat", report)
+
+    assert "React frontend developer with public project evidence" in draft.markdown
+
+
+def test_readme_without_react_strengths_uses_aspirational_language() -> None:
+    evidence = report_with_react_evidence().model_copy(update={"items": []})
+    report = generate_report(evidence, "completed")
+
+    draft = generate_profile_readme("octocat", report)
+
+    assert "Building toward React frontend development" in draft.markdown
+
+
 def test_readme_draft_uses_only_report_strengths_and_sources() -> None:
     report = generate_report(report_with_python_evidence(), "completed")
 

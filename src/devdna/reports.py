@@ -13,6 +13,16 @@ from devdna.schemas import (
 
 REPORT_SCHEMA_VERSION = "1"
 REPORT_VERSION = "python-backend-report-v1"
+REPORT_VERSIONS = {
+    "python_backend_developer": "python-backend-report-v1",
+    "frontend_react_developer": "frontend-react-report-v1",
+    "frontend_developer": "frontend-report-v1",
+    "devops_engineer": "devops-report-v1",
+}
+
+
+def report_version_for(role: str) -> str:
+    return REPORT_VERSIONS.get(role, "devdna-report-v1")
 
 
 def unique_sources(items: list[EvidenceItem]) -> list[EvidenceSource]:
@@ -90,7 +100,7 @@ def generate_report(
 
     return ReportSnapshot(
         schema_version=REPORT_SCHEMA_VERSION,
-        report_version=REPORT_VERSION,
+        report_version=report_version_for(evidence.target_role),
         analyzer_version=evidence.analyzer_version,
         rubric_version=evidence.rubric_version,
         target_role=evidence.target_role,

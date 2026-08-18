@@ -126,6 +126,20 @@ and self-reported-but-unverified skills separately. Neither raw bytes nor extrac
 responsive browser output, and the rule preventing CV-only claims from entering the verified
 summary are covered by automated tests.
 
+## Milestone 11 — broader role coverage: React frontend developer
+
+**Status:** completed on 18 August 2026. A new end-to-end role `frontend_react_developer` mirrors
+the `python_backend_developer` pattern exactly: a versioned rubric (`frontend_react_developer:v1`),
+deterministic evidence rules, bounded `package.json` dependency inspection, report tests,
+learning-plan tests, and recruiter-comparison tests. `package.json` joins the recognized manifests
+so the worker reads real npm dependencies instead of relying on fixtures. Report and learning-plan
+versions are now role-scoped, the README draft header and recruiter comparison page label the role
+correctly, and recruiter batches accept any supported role while rejecting unknown ones.
+
+**Done when:** evidence, report, learning-plan, recruiter-comparison, README, and worker-path
+fixture tests pass for the React role, no React claim is emitted without a manifest, and the full
+static and automated gate stays green.
+
 ## Test strategy
 
 - Unit tests: evidence rules and rubric matching.

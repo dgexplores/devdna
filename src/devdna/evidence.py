@@ -1,3 +1,4 @@
+import json
 import re
 import tomllib
 from collections.abc import Callable, Iterable
@@ -109,6 +110,17 @@ def extract_dependencies(path: str, content: str) -> list[str]:
             for line in content.splitlines()
             if line.strip() and not line.lstrip().startswith(("#", "-"))
         )
+    elif lower_path.endswith(".json"):
+        try:
+            document = json.loads(content)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(document, dict):
+            return []
+        for section in ("dependencies", "devDependencies"):
+            entries = document.get(section)
+            if isinstance(entries, dict):
+                values.extend(entries.keys())
 
     normalized = {dependency for value in values if (dependency := normalize_dependency(value))}
     normalized.discard("python")
@@ -334,6 +346,81 @@ class RepositoryAnalyzer:
                 [ts_config],
             )
 
+    def react(self) -> None:
+        def is_test_path(path: str) -> bool:
+            lower = self.lower[path]
+            return (
+                lower.startswith(("test/", "tests/", "__tests__/"))
+                or ".test." in lower
+                or ".spec." in lower
+            )
+
+        jsx_source = next(
+            (
+                path
+                for path in self.paths
+                if self.lower[path].endswith((".tsx", ".jsx")) and not is_test_path(path)
+            ),
+            None,
+        )
+        if jsx_source is None:
+            jsx_source = self.first(lambda path: self.lower[path].endswith((".tsx", ".jsx")))
+        package_json = self.first(lambda path: self.lower[path].split("/")[-1] == "package.json")
+        test_file = self.first(
+            lambda path: (
+                self.lower[path].startswith(("test/", "tests/", "__tests__/"))
+                or ".test." in self.lower[path]
+                or ".spec." in self.lower[path]
+            )
+        )
+        ts_config = self.first(
+            lambda path: self.lower[path].split("/")[-1] in {"tsconfig.json", "tsconfig.build.json"}
+        )
+        style_file = self.first(
+            lambda path: self.lower[path].endswith((".css", ".scss", ".sass", ".less"))
+        )
+        react_dependency = self.dependencies.intersection({"react", "react-dom"})
+        if jsx_source and package_json and react_dependency:
+            self.add(
+                "react.app",
+                "frontend",
+                "React JSX source code and a package manifest declaring React are present.",
+                [jsx_source, package_json],
+            )
+        if react_dependency and package_json:
+            self.add(
+                "react.framework",
+                "frontend",
+                "React is declared as a project dependency.",
+                [package_json],
+            )
+        if test_file and package_json:
+            runner = any(
+                runner in self.dependencies
+                for runner in ("vitest", "jest", "@testing-library/react", "playwright", "cypress")
+            )
+            if runner:
+                self.add(
+                    "react.testing",
+                    "testing",
+                    "React automated tests use a recognized runner.",
+                    [test_file, package_json],
+                )
+        if style_file:
+            self.add(
+                "react.styling",
+                "frontend",
+                "A styling system is present in source.",
+                [style_file],
+            )
+        if ts_config and self.first(lambda path: self.lower[path].endswith((".ts", ".tsx"))):
+            self.add(
+                "react.typescript",
+                "frontend",
+                "TypeScript is configured and used in React source.",
+                [ts_config],
+            )
+
     def devops(self) -> None:
         iac = self.first(
             lambda path: (
@@ -397,6 +484,8 @@ class RepositoryAnalyzer:
         self.shared()
         if target_role == "python_backend_developer":
             self.python()
+        elif target_role == "frontend_react_developer":
+            self.react()
         elif target_role == "frontend_developer":
             self.frontend()
         elif target_role == "devops_engineer":

@@ -883,7 +883,7 @@ def render_recruiter_batch(batch: RecruiterBatchResponse) -> str:
 {topbar_nav("Candidate comparison")}
 <main class="candidate-shell">
   <section class="candidate-hero">
-    <p class="eyebrow">Python backend developer</p>
+    <p class="eyebrow">{escape(role_label(batch.target_role))}</p>
     <h1>Evidence comparison.</h1>
     <p>{len(batch.candidates)} candidates from {escape(batch.source_filename)}. Ranked only by
       verified coverage of this role rubric.</p>

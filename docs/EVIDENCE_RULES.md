@@ -13,6 +13,12 @@ The saved inspection facts are:
 
 Every evidence item identifies one repository and one or more GitHub file links. Missing or inaccessible data produces no claim. A failed or truncated repository inspection makes the analysis partial and adds a visible warning.
 
+## React frontend contract
+
+Analyzer `evidence-v1` uses rubric `frontend_react_developer:v1`. It applies the same bounded
+inspection limits and reads at most two manifests of at most 100 KB each, where `package.json`
+counts as a recognized manifest. Saved inspection facts are identical to the Python contract.
+
 ## Version 1 rules
 
 | Evidence key | Required facts |
@@ -28,3 +34,18 @@ Every evidence item identifies one repository and one or more GitHub file links.
 | `database.tooling` | Recognized database dependency, optionally supported by Alembic or migrations paths. |
 
 The analyzer does not use commits, streaks, stars, followers, repository popularity, or self-declared profile text as evidence of engineering ability.
+
+## React frontend version 1 rules
+
+| Evidence key | Required facts |
+|---|---|
+| `react.app` | Non-test JSX or TSX source file plus a read `package.json` declaring React. |
+| `react.framework` | React or React DOM dependency in a read manifest. |
+| `react.testing` | Test file plus Vitest, Jest, Testing Library, Playwright, or Cypress dependency. |
+| `react.styling` | CSS, Sass, Less source file or a styling dependency. |
+| `react.typescript` | `tsconfig.json` plus TypeScript source files. |
+| `automation.github_actions` | File under `.github/workflows/`. |
+| `delivery.container` | Dockerfile, Compose, or docker-compose configuration. |
+| `documentation.project` | README or file under `docs/`. |
+
+React evidence applies the same prohibition: commits, streaks, stars, followers, repository popularity, and self-declared profile text are never evidence of engineering ability.

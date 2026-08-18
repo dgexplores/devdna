@@ -8,6 +8,7 @@ USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
 AnalysisStatus = Literal["queued", "running", "completed", "partial", "failed"]
 SupportedRole = Literal[
     "python_backend_developer",
+    "frontend_react_developer",
     "frontend_developer",
     "devops_engineer",
 ]

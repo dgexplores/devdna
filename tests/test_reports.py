@@ -58,6 +58,98 @@ def evidence_snapshot() -> EvidenceSnapshot:
     )
 
 
+def react_evidence_snapshot() -> EvidenceSnapshot:
+    return EvidenceSnapshot(
+        schema_version="1",
+        analyzer_version="evidence-v1",
+        target_role="frontend_react_developer",
+        rubric_version="frontend_react_developer:v1",
+        repositories_analyzed=1,
+        items=[
+            EvidenceItem(
+                key="react.app",
+                category="frontend",
+                claim="React JSX source and a manifest declaring React are present.",
+                repository="octocat/react-app",
+                sources=[
+                    EvidenceSource(
+                        repository="octocat/react-app",
+                        path="src/main.tsx",
+                        url="https://github.com/octocat/react-app/blob/main/src/main.tsx",
+                    ),
+                    EvidenceSource(
+                        repository="octocat/react-app",
+                        path="package.json",
+                        url="https://github.com/octocat/react-app/blob/main/package.json",
+                    ),
+                ],
+            ),
+            EvidenceItem(
+                key="documentation.project",
+                category="documentation",
+                claim="Documentation is present.",
+                repository="octocat/react-app",
+                sources=[
+                    EvidenceSource(
+                        repository="octocat/react-app",
+                        path="README.md",
+                        url="https://github.com/octocat/react-app/blob/main/README.md",
+                    )
+                ],
+            ),
+        ],
+    )
+
+
+def test_generate_react_report_maps_evidence_to_strengths_gaps_and_actions() -> None:
+    report = generate_report(react_evidence_snapshot(), "completed")
+
+    assert report.report_version == "frontend-react-report-v1"
+    assert report.alignment_label == "Foundational role alignment"
+    assert report.requirements_met == 2
+    assert report.requirements_total == 8
+    assert [strength.requirement for strength in report.strengths] == [
+        "react.app",
+        "documentation.project",
+    ]
+    assert [gap.requirement for gap in report.gaps] == [
+        "react.framework",
+        "react.testing",
+        "react.styling",
+        "react.typescript",
+        "automation.github_actions",
+        "delivery.container",
+    ]
+    assert [action.priority for action in report.actions] == [1, 2, 3, 4, 5, 6]
+    assert report.strengths[0].sources[0].path == "package.json"
+    assert all(action.solution for action in report.actions)
+    assert all(action.template for action in report.actions)
+    assert "react" in (report.actions[0].template or "").lower()
+
+
+def test_generate_react_partial_report_does_not_present_missing_data_as_absence() -> None:
+    report = generate_report(
+        react_evidence_snapshot(),
+        "partial",
+        "octocat/react-app: file tree was truncated",
+    )
+
+    assert report.collection_status == "partial"
+    assert report.warning == "octocat/react-app: file tree was truncated"
+    assert all(
+        "not verified in the available inspection data" in gap.explanation for gap in report.gaps
+    )
+
+
+def test_generate_react_report_rejects_mismatched_rubric() -> None:
+    evidence = react_evidence_snapshot().model_copy(
+        update={"rubric_version": "frontend_react_developer:v0"}
+    )
+
+    with pytest.raises(ValueError, match="does not match"):
+        generate_report(evidence, "completed")
+
+
 def test_generate_report_maps_evidence_to_strengths_gaps_and_actions() -> None:
     report = generate_report(evidence_snapshot(), "completed")
 

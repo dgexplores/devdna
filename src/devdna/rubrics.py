@@ -187,6 +187,32 @@ cd my-frontend
 npm install
 npm run dev"""
 
+REACT_APP_TEMPLATE = """# src/main.tsx
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { App } from "./App";
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);"""
+
+REACT_COMPONENT_TEMPLATE = """// src/App.tsx
+import { useState } from "react";
+
+export function App() {
+  const [count, setCount] = useState(0);
+  return (
+    <main>
+      <h1>Hello, React</h1>
+      <button onClick={() => setCount((value) => value + 1)}>
+        Count: {count}
+      </button>
+    </main>
+  );
+}"""
+
 
 @dataclass(frozen=True)
 class RubricRequirement:
@@ -481,6 +507,145 @@ FRONTEND_DEVELOPER = RoleRubric(
     ),
 )
 
+FRONTEND_REACT_DEVELOPER = RoleRubric(
+    role="frontend_react_developer",
+    version="frontend_react_developer:v1",
+    requirements=(
+        RubricRequirement(
+            key="react.app",
+            title="React application foundation",
+            description="React JSX source code is paired with an npm dependency manifest.",
+            evidence_keys=("react.app",),
+            action_title="Publish a structured React application",
+            action_detail=(
+                "Add a focused React repository with installable dependencies and a clear "
+                "application entry point."
+            ),
+            evidence_needed=("JSX/TSX source files", "package.json declaring React"),
+            solution=(
+                "Create a repository with a `package.json` manifest declaring React, a `src/` "
+                "package with a JSX or TSX entry point, and one documented command that starts "
+                "the development server."
+            ),
+            template=REACT_APP_TEMPLATE,
+        ),
+        RubricRequirement(
+            key="react.framework",
+            title="React component framework",
+            description="React is declared as a project dependency.",
+            evidence_keys=("react.framework",),
+            action_title="Build a component-based UI with React",
+            action_detail=(
+                "Create a small interactive UI with React components and document how to run it."
+            ),
+            evidence_needed=("React dependency", "Component source", "Run instructions"),
+            solution=(
+                "Declare `react` and `react-dom` in the package manifest and build a small "
+                "interactive component that renders state and handles a user action."
+            ),
+            template=REACT_COMPONENT_TEMPLATE,
+        ),
+        RubricRequirement(
+            key="react.testing",
+            title="React automated testing",
+            description="React tests and a recognized component test runner are present.",
+            evidence_keys=("react.testing",),
+            action_title="Add a React component test suite",
+            action_detail=(
+                "Cover component behavior and at least one interaction path, then make the tests "
+                "runnable with one documented command."
+            ),
+            evidence_needed=("Test files", "Vitest/Jest or Testing Library dependency"),
+            solution=(
+                "Add Vitest or Jest with Testing Library, cover one component render and one "
+                "interaction path, and wire `npm test` as the single test command."
+            ),
+            template=VITEST_TEMPLATE,
+        ),
+        RubricRequirement(
+            key="react.styling",
+            title="Styling system",
+            description="A styling approach is declared or visible in source.",
+            evidence_keys=("react.styling",),
+            action_title="Establish a consistent styling system",
+            action_detail=(
+                "Add CSS modules, Sass, Tailwind, or styled-components with themed, reusable "
+                "styles."
+            ),
+            evidence_needed=("Style files", "Styling dependency"),
+            solution=(
+                "Add CSS modules, Sass, Tailwind, or styled-components and build a small set of "
+                "reusable, themed components with consistent spacing and design tokens."
+            ),
+            template=STYLING_TEMPLATE,
+        ),
+        RubricRequirement(
+            key="react.typescript",
+            title="Type-safe React",
+            description="TypeScript is configured and used in the application.",
+            evidence_keys=("react.typescript",),
+            action_title="Adopt TypeScript",
+            action_detail=("Add a strict tsconfig.json and type the core React data flow."),
+            evidence_needed=("tsconfig.json", "TypeScript source files"),
+            solution=(
+                "Add a strict `tsconfig.json` and convert the core data flow of the app to typed "
+                "TypeScript modules and components."
+            ),
+            template=TSCONFIG_TEMPLATE,
+        ),
+        RubricRequirement(
+            key="automation.github_actions",
+            title="Continuous integration",
+            description="A GitHub Actions workflow provides automated project checks.",
+            evidence_keys=("automation.github_actions",),
+            action_title="Run quality checks in CI",
+            action_detail=(
+                "Create a GitHub Actions workflow that installs dependencies and runs tests and "
+                "static checks."
+            ),
+            evidence_needed=(".github/workflows/*.yml",),
+            solution=(
+                "Commit a GitHub Actions workflow that installs dependencies, runs the test "
+                "suite, and runs static checks on every push and pull request."
+            ),
+            template=CI_TEMPLATE,
+        ),
+        RubricRequirement(
+            key="delivery.container",
+            title="Containerized delivery",
+            description="Container build or orchestration configuration is present.",
+            evidence_keys=("delivery.container",),
+            action_title="Make the project reproducible with containers",
+            action_detail=(
+                "Add a production-focused Dockerfile or Compose setup with documented startup."
+            ),
+            evidence_needed=("Dockerfile or Compose configuration",),
+            solution=(
+                "Add a multi-stage Dockerfile that builds static assets and serves them from a "
+                "non-root user with a documented start command."
+            ),
+            template=DOCKERFILE_TEMPLATE,
+        ),
+        RubricRequirement(
+            key="documentation.project",
+            title="Project documentation",
+            description="Repository documentation explains the project.",
+            evidence_keys=("documentation.project",),
+            action_title="Document the engineering story",
+            action_detail=(
+                "Explain the problem, architecture, setup, verification commands, and key "
+                "tradeoffs."
+            ),
+            evidence_needed=("README or docs/ content",),
+            solution=(
+                "Write a README that explains the problem, setup and verify commands, "
+                "architecture, and the tradeoffs the project deliberately accepts."
+            ),
+            template=README_TEMPLATE,
+        ),
+    ),
+)
+
 DEVOPS_ENGINEER = RoleRubric(
     role="devops_engineer",
     version="devops_engineer:v1",
@@ -607,12 +772,14 @@ DEVOPS_ENGINEER = RoleRubric(
 
 RUBRICS = {
     PYTHON_BACKEND_DEVELOPER.role: PYTHON_BACKEND_DEVELOPER,
+    FRONTEND_REACT_DEVELOPER.role: FRONTEND_REACT_DEVELOPER,
     FRONTEND_DEVELOPER.role: FRONTEND_DEVELOPER,
     DEVOPS_ENGINEER.role: DEVOPS_ENGINEER,
 }
 
 ROLE_LABELS = {
     "python_backend_developer": "Python backend developer",
+    "frontend_react_developer": "React frontend developer",
     "frontend_developer": "Frontend developer",
     "devops_engineer": "DevOps engineer",
 }
