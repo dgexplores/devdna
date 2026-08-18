@@ -3,6 +3,59 @@ from devdna.reports import generate_report
 from devdna.schemas import EvidenceItem, EvidenceSnapshot, EvidenceSource
 
 
+def evidence_with_react() -> EvidenceSnapshot:
+    return EvidenceSnapshot(
+        schema_version="1",
+        analyzer_version="evidence-v1",
+        target_role="frontend_react_developer",
+        rubric_version="frontend_react_developer:v1",
+        repositories_analyzed=1,
+        items=[
+            EvidenceItem(
+                key="react.app",
+                category="frontend",
+                claim="React JSX source and dependency management are present.",
+                repository="octocat/react-app",
+                sources=[
+                    EvidenceSource(
+                        repository="octocat/react-app",
+                        path="package.json",
+                        url="https://github.com/octocat/react-app/blob/main/package.json",
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def test_react_learning_plan_orders_role_gaps_before_dated_market_signal() -> None:
+    report = generate_report(evidence_with_react(), "completed")
+
+    plan = generate_learning_plan(report)
+
+    assert plan.generator_version == "frontend-react-learning-v1"
+    assert plan.recommendations[0].kind == "role_gap"
+    assert plan.recommendations[0].title == "Build a component-based UI with React"
+    assert plan.recommendations[0].learning_outcomes
+    assert plan.recommendations[-1].kind == "market_signal"
+    assert plan.recommendations[-1].reviewed_on == MARKET_REVIEW_DATE
+    assert plan.recommendations[-1].source_label == "GitHub Octoverse 2025"
+    assert plan.recommendations[-1].title == "Production React application engineering"
+    assert [item.priority for item in plan.recommendations] == list(
+        range(1, len(plan.recommendations) + 1)
+    )
+
+
+def test_react_learning_plan_does_not_recommend_verified_requirement_as_gap() -> None:
+    report = generate_report(evidence_with_react(), "completed")
+
+    plan = generate_learning_plan(report)
+
+    role_titles = [item.title for item in plan.recommendations if item.kind == "role_gap"]
+    assert "Publish a structured React application" not in role_titles
+    assert "Add a React component test suite" in role_titles
+
+
 def evidence_with_python() -> EvidenceSnapshot:
     return EvidenceSnapshot(
         schema_version="1",

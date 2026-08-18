@@ -9,6 +9,16 @@
 
 The report generator is deterministic. The same evidence snapshot and collection status produce the same report.
 
+## React frontend versions
+
+- Schema: `1`
+- Generator: `frontend-react-report-v1`
+- Evidence analyzer: `evidence-v1`
+- Rubric: `frontend_react_developer:v1`
+
+The report generator is deterministic for this role as well: the same evidence snapshot and
+collection status produce the same report.
+
 ## Meaning
 
 `requirements_met` is a transparent count of rubric requirements that have one or more matching evidence items. It is not a universal developer score and does not use repository popularity or activity.

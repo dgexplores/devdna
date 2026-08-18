@@ -16,7 +16,7 @@ DevDNA converts public GitHub project evidence into an understandable developer 
 - Practical, prioritised improvement actions.
 - A source link for each claim.
 
-Supported initial target role: `python_backend_developer`. Add roles only when their rubric and evidence rules are defined.
+Supported initial target role: `python_backend_developer`. Add roles only when their rubric and evidence rules are defined. The React frontend role `frontend_react_developer` is now supported with its own versioned rubric and evidence rules.
 
 ## Original release 1 non-goals
 

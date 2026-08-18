@@ -434,6 +434,30 @@ def test_recruiter_batch_is_bounded_and_owner_scoped(tmp_path: Path) -> None:
     assert len(queue.jobs) == 2
 
 
+def test_recruiter_batch_accepts_react_role_and_rejects_unknown_role(tmp_path: Path) -> None:
+    queue = FakeQueue()
+    client = create_test_client(tmp_path / "recruiter-react.db", queue)
+    try:
+        accepted = client.post(
+            "/v1/recruiter/batches",
+            data={"target_role": "frontend_react_developer"},
+            files={"file": ("candidates.csv", b"github_username\noctocat\n", "text/csv")},
+        )
+        rejected = client.post(
+            "/v1/recruiter/batches",
+            data={"target_role": "unknown_role"},
+            files={"file": ("candidates.csv", b"github_username\noctocat\n", "text/csv")},
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert accepted.status_code == 202
+    assert accepted.json()["target_role"] == "frontend_react_developer"
+    assert len(queue.jobs) == 1
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == "Unsupported target role"
+
+
 def test_recruiter_upload_rejects_invalid_and_large_files(tmp_path: Path) -> None:
     client = create_test_client(
         tmp_path / "recruiter-invalid.db",

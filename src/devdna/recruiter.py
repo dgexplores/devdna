@@ -11,6 +11,7 @@ from devdna.analyses import get_queue, start_analysis
 from devdna.database import get_session
 from devdna.models import AnalysisRun, RecruiterBatch, RecruiterCandidate
 from devdna.recruiter_files import RecruiterFileError, parse_recruiter_file
+from devdna.rubrics import supported_roles
 from devdna.schemas import (
     AnalysisCreate,
     AnalysisStatus,
@@ -121,7 +122,7 @@ async def create_batch(
     queue: Queue,
     maximum_candidates: int,
 ) -> RecruiterBatchResponse:
-    if target_role != "python_backend_developer":
+    if target_role not in supported_roles():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Unsupported target role",

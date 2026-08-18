@@ -88,6 +88,11 @@ If repository collection fails after the public profile succeeds, the analysis r
 
 A completed or partial response also includes `evidence_snapshot`. Evidence version `python-backend-evidence-v1` derives only from saved repository file paths and normalized Python manifest dependencies. Every claim contains direct GitHub source links; commit counts and contribution streaks are not analyzer inputs. See [the evidence rules](docs/EVIDENCE_RULES.md).
 
+Beyond the Python backend role, DevDNA supports the `frontend_react_developer` role end to end with
+its own versioned rubric (`frontend_react_developer:v1`), React-specific evidence rules that read
+bounded `package.json` manifests, role-scoped report and learning-plan versions, and recruiter
+comparison. Submit it with `"target_role": "frontend_react_developer"`.
+
 The worker converts that evidence into `report_snapshot`, containing verified strengths, unverified rubric requirements, and prioritized actions. Retrieve the typed report at:
 
 ```bash

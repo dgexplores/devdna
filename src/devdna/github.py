@@ -31,6 +31,7 @@ MAX_TREE_ENTRIES = 5000
 MAX_MANIFESTS_PER_REPOSITORY = 2
 MAX_MANIFEST_BYTES = 100_000
 MANIFEST_NAMES = {
+    "package.json",
     "pipfile",
     "pyproject.toml",
     "requirements-dev.txt",

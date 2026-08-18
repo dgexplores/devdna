@@ -40,6 +40,31 @@ asyncpg>=0.30
     assert extract_dependencies("requirements.txt", requirements) == ["asyncpg", "uvicorn"]
 
 
+def test_extract_dependencies_from_package_json() -> None:
+    package_json = """
+{
+  "name": "my-web",
+  "dependencies": {
+    "react": "^18.3.0",
+    "@testing-library/react": "^16.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}
+"""
+
+    assert extract_dependencies("package.json", package_json) == [
+        "@testing-library/react",
+        "react",
+        "typescript",
+        "vite",
+        "vitest",
+    ]
+
+
 def test_analyze_evidence_emits_stable_source_linked_claims() -> None:
     inspection = RepositoryInspection(
         repository_full_name="octocat/backend",
@@ -143,6 +168,102 @@ def test_frontend_analyzer_detects_framework_styling_and_tests() -> None:
     assert "documentation.project" in by_key
 
 
+def test_react_analyzer_detects_react_evidence_with_source_links() -> None:
+    snapshot = GitHubSnapshot(
+        profile=PROFILE,
+        inspections=[
+            RepositoryInspection(
+                repository_full_name="octocat/react-app",
+                default_branch="main",
+                file_paths=[
+                    ".github/workflows/ci.yml",
+                    "Dockerfile",
+                    "README.md",
+                    "package.json",
+                    "tsconfig.json",
+                    "src/main.tsx",
+                    "src/App.tsx",
+                    "src/App.module.css",
+                    "src/App.test.tsx",
+                ],
+                manifest_paths=["package.json"],
+                dependencies=[
+                    "@testing-library/react",
+                    "react",
+                    "react-dom",
+                    "typescript",
+                    "vitest",
+                ],
+            )
+        ],
+        rate_limit_remaining=50,
+        rate_limit_reset=123456,
+    )
+
+    evidence = analyze_evidence(snapshot, "frontend_react_developer")
+    by_key = {item.key: item for item in evidence.items}
+
+    assert evidence.rubric_version == "frontend_react_developer:v1"
+    assert set(by_key) == {
+        "automation.github_actions",
+        "delivery.container",
+        "documentation.project",
+        "react.app",
+        "react.framework",
+        "react.styling",
+        "react.testing",
+        "react.typescript",
+    }
+    assert by_key["react.app"].sources[0].url == (
+        "https://github.com/octocat/react-app/blob/main/src/App.tsx"
+    )
+    assert by_key["react.framework"].sources[0].path == "package.json"
+    assert by_key["react.testing"].sources[0].path == "src/App.test.tsx"
+    assert by_key["react.styling"].sources[0].path == "src/App.module.css"
+
+
+def test_react_analyzer_does_not_infer_react_without_manifest() -> None:
+    snapshot = GitHubSnapshot(
+        profile=PROFILE,
+        inspections=[
+            RepositoryInspection(
+                repository_full_name="octocat/script",
+                default_branch="main",
+                file_paths=["src/index.jsx"],
+            )
+        ],
+        rate_limit_remaining=50,
+        rate_limit_reset=123456,
+    )
+
+    evidence = analyze_evidence(snapshot, "frontend_react_developer")
+
+    assert evidence.items == []
+
+
+def test_react_analyzer_does_not_infer_react_without_jsx_source() -> None:
+    snapshot = GitHubSnapshot(
+        profile=PROFILE,
+        inspections=[
+            RepositoryInspection(
+                repository_full_name="octocat/plain-js",
+                default_branch="main",
+                file_paths=["package.json", "index.js"],
+                manifest_paths=["package.json"],
+                dependencies=["react"],
+            )
+        ],
+        rate_limit_remaining=50,
+        rate_limit_reset=123456,
+    )
+
+    evidence = analyze_evidence(snapshot, "frontend_react_developer")
+    by_key = {item.key: item for item in evidence.items}
+
+    assert "react.app" not in by_key
+    assert "react.framework" in by_key
+
+
 def test_devops_analyzer_detects_infrastructure_as_code() -> None:
     snapshot = GitHubSnapshot(
         profile=PROFILE,
@@ -229,5 +350,6 @@ def test_analyze_evidence_collects_technologies_across_repositories() -> None:
 
 
 def test_role_registry_has_supported_roles() -> None:
+    assert get_rubric("frontend_react_developer").version == "frontend_react_developer:v1"
     assert get_rubric("frontend_developer").role == "frontend_developer"
     assert get_rubric("devops_engineer").version == "devops_engineer:v1"

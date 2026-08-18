@@ -1,10 +1,29 @@
 from collections import defaultdict
 
+from devdna.rubrics import role_label
 from devdna.schemas import EvidenceSource, ReadmeDraft, ReadmeRepository, ReportSnapshot
 
 README_SCHEMA_VERSION = "1"
 README_GENERATOR_VERSION = "evidence-readme-v2"
 README_STYLES = ("minimal", "badges", "centered")
+
+ROLE_SUMMARIES = {
+    "python_backend_developer": (
+        "Python backend developer",
+        "Building toward Python backend development",
+    ),
+    "frontend_react_developer": (
+        "React frontend developer",
+        "Building toward React frontend development",
+    ),
+}
+
+
+def role_summaries(report: ReportSnapshot) -> tuple[str, str]:
+    return ROLE_SUMMARIES.get(
+        report.target_role,
+        (role_label(report.target_role), f"Building toward {role_label(report.target_role)}"),
+    )
 
 
 def repository_url(repository: str) -> str:
@@ -43,12 +62,14 @@ def render_badge_line(badges: list[str]) -> str:
 
 
 def render_header(username: str, report: ReportSnapshot, style: str) -> list[str]:
+    role_name, aspiration = role_summaries(report)
     profile_summary = (
-        "Python backend developer with public project evidence across "
+        role_name
+        + " with public project evidence across "
         + ", ".join(strength.title.lower() for strength in report.strengths[:3])
         + "."
         if report.strengths
-        else "Building toward Python backend development through public, reviewable projects."
+        else aspiration + " through public, reviewable projects."
     )
     title = f"# {username}"
     if style == "centered":

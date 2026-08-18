@@ -100,6 +100,92 @@ def test_collect_profile_completes_analysis(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+def test_collect_profile_completes_react_analysis(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'react.db'}")
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+        analysis = AnalysisRun(
+            id="react-analysis-id",
+            github_username="octocat",
+            target_role="frontend_react_developer",
+            status="queued",
+        )
+        async with sessions() as session:
+            session.add(analysis)
+            await session.commit()
+
+        async def fetch_profile(_: str) -> GitHubSnapshot:
+            return GitHubSnapshot(
+                profile=GitHubProfile(
+                    login="octocat",
+                    id=1,
+                    avatar_url="https://github.com/octocat.png",
+                    html_url="https://github.com/octocat",
+                    public_repos=8,
+                    followers=20,
+                    following=0,
+                    created_at=datetime(2011, 1, 25, 18, 44, 36, tzinfo=UTC),
+                    updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+                ),
+                repositories=[
+                    GitHubRepository(
+                        id=3,
+                        name="react-app",
+                        full_name="octocat/react-app",
+                        html_url="https://github.com/octocat/react-app",
+                        fork=False,
+                        archived=False,
+                        disabled=False,
+                        language="TypeScript",
+                        size=100,
+                        stargazers_count=5,
+                        forks_count=1,
+                        open_issues_count=0,
+                        default_branch="main",
+                        created_at=datetime(2024, 1, 1, tzinfo=UTC),
+                        updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+                        pushed_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    )
+                ],
+                inspections=[
+                    RepositoryInspection(
+                        repository_full_name="octocat/react-app",
+                        default_branch="main",
+                        file_paths=[
+                            "package.json",
+                            "tsconfig.json",
+                            "src/main.tsx",
+                            "src/App.test.tsx",
+                        ],
+                        manifest_paths=["package.json"],
+                        dependencies=["@testing-library/react", "react", "react-dom", "vitest"],
+                    )
+                ],
+                rate_limit_remaining=59,
+                rate_limit_reset=123456,
+            )
+
+        await collect_profile("react-analysis-id", sessions, fetch_profile)
+
+        async with sessions() as session:
+            result = await session.get(AnalysisRun, "react-analysis-id")
+            assert result is not None
+            assert result.status == "completed"
+            assert result.evidence_snapshot is not None
+            assert result.evidence_snapshot["rubric_version"] == "frontend_react_developer:v1"
+            assert result.evidence_snapshot["items"][0]["key"] == "react.app"
+            assert result.report_snapshot is not None
+            assert result.report_snapshot["report_version"] == "frontend-react-report-v1"
+            assert result.report_snapshot["requirements_total"] == 8
+            assert result.report_snapshot["target_role"] == "frontend_react_developer"
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_collect_profile_preserves_retryable_failure(tmp_path: Path) -> None:
     async def scenario() -> None:
         engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'retry.db'}")
