@@ -48,4 +48,5 @@ Each gap receives one action in rubric order. The action explains what to build 
 - `GET /v1/analyses/{analysis_id}/report` returns the typed JSON report.
 - `GET /reports/{analysis_id}` renders the accessible web report.
 - A queued or running JSON report returns `409`.
-- A queued or running web report returns `202` and refreshes until the report is ready.
+- A queued or running web report returns `202` and polls the analysis API in the background,
+  updating itself live until the report is ready (no full-page meta refresh).

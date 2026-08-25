@@ -53,7 +53,7 @@ from devdna.web_sessions import SESSION_COOKIE, create_web_session, verify_web_s
 
 router = APIRouter(tags=["web"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
-ASSET_VERSION = "5"
+ASSET_VERSION = "6"
 
 
 def week_width(week: object) -> int:
@@ -78,20 +78,19 @@ FAVICON = (
 )
 
 
-def page_shell(title: str, content: str, refresh: bool = False) -> str:
-    refresh_tag = '<meta http-equiv="refresh" content="3">' if refresh else ""
+def page_shell(title: str, content: str) -> str:
     return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  {refresh_tag}
   <title>{escape(title)}</title>
   <link rel="icon" href="{FAVICON}">
   <link rel="stylesheet" href="/assets/report.css?v={ASSET_VERSION}">
 </head>
 <body>
   {content}
+  <script src="/assets/app.js?v={ASSET_VERSION}" defer></script>
 </body>
 </html>"""
 
@@ -437,23 +436,28 @@ def dashboard_response(
 
 
 def render_pending_page(username: str, analysis_id: str, analysis_status: str) -> str:
+    safe_id = escape(analysis_id, quote=True)
     content = f"""
 {topbar_nav("Developer evidence")}
 <main class="pending-shell">
-  <section class="pending-panel" aria-live="polite" aria-busy="true">
+  <section class="pending-panel" aria-live="polite" aria-busy="true"
+    data-poll-url="/v1/analyses/{safe_id}"
+    data-report-url="/reports/{safe_id}"
+    data-initial-status="{escape(analysis_status)}"
+    data-state="active">
     <div class="pending-signal" aria-hidden="true"><span></span><span></span><span></span></div>
-    <p class="eyebrow">Analysis {escape(analysis_status)}</p>
+    <p class="eyebrow">Live status: <span data-pending-status>{escape(analysis_status)}</span></p>
     <h1>Reading {escape(username)}’s work.</h1>
-    <p>We are inspecting public project files and matching claims to direct evidence.</p>
+    <p data-pending-stage>We are inspecting public project files and matching claims to direct
+      evidence. This page updates itself — no need to refresh.</p>
+    <p class="pending-note" data-pending-note role="status"></p>
     <div class="pending-actions">
-      <a class="button button-primary"
-        href="/reports/{escape(analysis_id, quote=True)}">Check again</a>
-      <a class="button button-secondary"
-        href="/v1/analyses/{escape(analysis_id, quote=True)}">View raw status</a>
+      <a class="button button-primary" href="/reports/{safe_id}">Open report now</a>
+      <a class="button button-secondary" href="/v1/analyses/{safe_id}">View raw status</a>
     </div>
   </section>
 </main>"""
-    return page_shell(f"{username} | DevDNA report", content, refresh=True)
+    return page_shell(f"{username} | DevDNA report", content)
 
 
 def render_sources(strength: ReportStrength) -> str:
@@ -878,15 +882,28 @@ def render_candidate(candidate: RecruiterCandidateResult) -> str:
 
 def render_recruiter_batch(batch: RecruiterBatchResponse) -> str:
     pending = any(item.status in {"queued", "running"} for item in batch.candidates)
+    live_note = (
+        '<p class="pending-note" data-pending-note role="status">'
+        "Some candidates are still being analyzed. This page updates itself.</p>"
+        if pending
+        else ""
+    )
+    poll_attributes = (
+        f'data-poll-url="/v1/recruiter/batches/{escape(batch.id, quote=True)}"'
+        ' data-reload-on-ready data-state="active" aria-busy="true"'
+        if pending
+        else ""
+    )
     cards = "".join(render_candidate(item) for item in batch.candidates)
     content = f"""
 {topbar_nav("Candidate comparison")}
-<main class="candidate-shell">
+<main class="candidate-shell" {poll_attributes}>
   <section class="candidate-hero">
     <p class="eyebrow">{escape(role_label(batch.target_role))}</p>
     <h1>Evidence comparison.</h1>
     <p>{len(batch.candidates)} candidates from {escape(batch.source_filename)}. Ranked only by
       verified coverage of this role rubric.</p>
+    {live_note}
     <div class="readme-actions">
       <a class="button button-secondary" href="/recruiter">New batch</a>
     </div>
@@ -898,7 +915,7 @@ def render_recruiter_batch(batch: RecruiterBatchResponse) -> str:
   </aside>
   <section class="candidate-list" aria-label="Candidate comparison">{cards}</section>
 </main>"""
-    return page_shell("Candidate comparison | DevDNA", content, refresh=pending)
+    return page_shell("Candidate comparison | DevDNA", content)
 
 
 def render_profile_overview(

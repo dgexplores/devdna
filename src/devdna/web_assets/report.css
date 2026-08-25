@@ -1644,6 +1644,46 @@ footer p {
   background: var(--accent);
 }
 
+.pending-note {
+  min-height: 1.4em;
+  margin: 1rem 0 0;
+  color: var(--warning);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.pending-panel[data-state="leaving"],
+[data-state="leaving"] {
+  transition: opacity 480ms var(--ease-out), transform 480ms var(--ease-out);
+}
+
+[data-state="leaving"] {
+  opacity: 0;
+  transform: scale(0.985) translateY(-6px);
+  pointer-events: none;
+}
+
+.pending-panel[data-state="stalled"],
+.candidate-shell[data-state="stalled"] {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--line));
+}
+
+.pending-panel[data-state="failed"],
+.candidate-shell[data-state="failed"] {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--line));
+}
+
+.pending-panel[data-state="failed"] h1,
+.pending-panel[data-state="failed"] [data-pending-stage] {
+  color: var(--danger);
+}
+
+.pending-panel[data-status="partial"] .pending-signal span,
+.pending-panel[data-status="completed"] .pending-signal span {
+  background: var(--positive);
+  animation: none;
+}
+
 /* ---------- Recruiter ---------- */
 
 .recruiter-hero {
@@ -1942,6 +1982,27 @@ footer p {
     opacity: 0.25;
     transform: translateY(-4px);
   }
+}
+
+/* ---------- Scroll reveals (JS progressive enhancement) ---------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  html.reveal-ready .reveal-item {
+    opacity: 0;
+    transform: translateY(14px);
+    transition: opacity 520ms var(--ease-out), transform 520ms var(--ease-out);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+
+  html.reveal-ready .reveal-item.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pending-panel[data-state="failed"] .pending-signal span,
+.pending-panel[data-state="stalled"] .pending-signal span {
+  animation-play-state: paused;
 }
 
 /* ---------- Responsive ---------- */

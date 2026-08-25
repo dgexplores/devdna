@@ -501,7 +501,9 @@ def test_recruiter_web_flow_creates_refreshing_comparison(tmp_path: Path) -> Non
     assert comparison.status_code == 200
     assert "Human review required" in comparison.text
     assert "octocat" in comparison.text
-    assert '<meta http-equiv="refresh" content="3">' in comparison.text
+    assert 'data-poll-url="/v1/recruiter/batches/' in comparison.text
+    assert "data-reload-on-ready" in comparison.text
+    assert "http-equiv" not in comparison.text
 
 
 def test_recruiter_batch_creation_is_rate_limited(tmp_path: Path) -> None:
