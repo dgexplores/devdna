@@ -11,6 +11,7 @@ from urllib.parse import quote, urlencode
 
 import httpx2
 
+from devdna.activity import CommitEntry, extract_activity_insights
 from devdna.config import Settings
 from devdna.evidence import extract_dependencies
 from devdna.schemas import (
@@ -26,6 +27,9 @@ MAX_REPOSITORIES = 10
 MAX_REPOSITORY_PAGES = 3
 MAX_EVENT_PAGES = 3
 MAX_EVENTS = 300
+MAX_COMMIT_REPOSITORIES = 5
+MAX_COMMITS_PER_REPOSITORY = 30
+MAX_COMMIT_MESSAGE = 140
 CACHE_TTL_SECONDS = 86400
 MAX_TREE_ENTRIES = 5000
 MAX_MANIFESTS_PER_REPOSITORY = 2
@@ -586,11 +590,12 @@ class GitHubClient:
     async def get_contributions(
         self,
         username: str,
-    ) -> GitHubContributions | None:
+    ) -> tuple[GitHubContributions | None, list[dict[str, Any]], int | None, int | None]:
         """Aggregate recent public activity (commits, PRs, forks) for the user.
 
-        Returns None when the user has no public event feed or events are
-        unavailable, so contribution data never fails an analysis.
+        Returns the contributions summary plus the raw event list so commit
+        intelligence can be merged in after direct commit fetching. Missing or
+        unavailable feeds degrade to an empty event list, never a failure.
         """
         events: list[dict[str, Any]] = []
         remaining: int | None = None
@@ -618,8 +623,75 @@ class GitHubClient:
                 params = None
 
         if not events:
-            return None
-        return aggregate_contributions(events, username, remaining, reset)
+            return None, [], remaining, reset
+        return aggregate_contributions(events, username, remaining, reset), events, remaining, reset
+
+    async def get_commit_entries(
+        self,
+        repositories: list[GitHubRepository],
+        username: str,
+    ) -> tuple[list[CommitEntry], int | None, int | None]:
+        """Fetch the developer's recent commits from their selected repositories.
+
+        The public events feed frequently omits push payloads, so meaningful-work
+        analysis reads real commit lists instead. Bounded to the first few
+        selected repositories; per-repo failures degrade to warnings-free skips.
+        """
+        entries: list[CommitEntry] = []
+        remaining: int | None = None
+        reset: int | None = None
+
+        async with self.client() as client:
+            for repository in repositories[:MAX_COMMIT_REPOSITORIES]:
+                repository_path = quote(repository.full_name, safe="/")
+                params: dict[str, str | int] = {
+                    "per_page": MAX_COMMITS_PER_REPOSITORY,
+                    "author": username,
+                }
+                try:
+                    response = await self.get_json(
+                        client,
+                        f"/repos/{repository_path}/commits",
+                        username,
+                        params,
+                    )
+                except (GitHubRateLimited, GitHubTransientError, GitHubUserNotFound):
+                    break
+                except httpx2.HTTPStatusError:
+                    continue
+                remaining = response.rate_limit_remaining
+                reset = response.rate_limit_reset
+                body = response.body if isinstance(response.body, list) else []
+                for item in body[:MAX_COMMITS_PER_REPOSITORY]:
+                    if not isinstance(item, dict):
+                        continue
+                    raw_commit = item.get("commit")
+                    raw_author = item.get("author")
+                    commit: dict[str, Any] = raw_commit if isinstance(raw_commit, dict) else {}
+                    author: dict[str, Any] = raw_author if isinstance(raw_author, dict) else {}
+                    commit_author_raw = commit.get("author")
+                    commit_author: dict[str, Any] = (
+                        commit_author_raw if isinstance(commit_author_raw, dict) else {}
+                    )
+                    raw_message = commit.get("message")
+                    occurred_raw = author.get("date") or commit_author.get("date")
+                    if not isinstance(raw_message, str) or not isinstance(occurred_raw, str):
+                        continue
+                    try:
+                        occurred = datetime.fromisoformat(occurred_raw.replace("Z", "+00:00"))
+                    except ValueError:
+                        continue
+                    html_url = item.get("html_url")
+                    entries.append(
+                        CommitEntry(
+                            message=raw_message.strip().splitlines()[0][:MAX_COMMIT_MESSAGE],
+                            repository=repository.full_name,
+                            url=str(html_url) if isinstance(html_url, str) else None,
+                            occurred_at=occurred,
+                        )
+                    )
+
+        return entries, remaining, reset
 
     async def get_organizations(self, username: str) -> list[str]:
         """List public organization memberships; never fails an analysis."""
@@ -652,11 +724,22 @@ class GitHubClient:
         try:
             repositories, remaining, reset = await self.get_repositories(username)
         except RepositoryCollectionFailed as error:
+            contributions_pair = await self.get_contributions(username)
+            commit_entries, _, _ = await self.get_commit_entries(
+                error.repositories,
+                username,
+            )
+            activity = extract_activity_insights(
+                contributions_pair[1],
+                username,
+                commit_entries=commit_entries or None,
+            )
             raise GitHubPartialResult(
                 GitHubSnapshot(
                     profile=snapshot.profile,
                     repositories=error.repositories,
-                    contributions=await self.get_contributions(username),
+                    contributions=contributions_pair[0],
+                    activity=activity,
                     organizations=organizations,
                     rate_limit_remaining=error.rate_limit_remaining
                     if error.rate_limit_remaining is not None
@@ -667,25 +750,42 @@ class GitHubClient:
                 ),
                 error.warning,
             ) from error
-        contributions = await self.get_contributions(username)
+        contributions, events, event_remaining, event_reset = await self.get_contributions(username)
         (
             inspections,
             warnings,
             inspection_remaining,
             inspection_reset,
         ) = await self.get_repository_inspections(repositories, username)
+        commit_entries, commit_remaining, commit_reset = await self.get_commit_entries(
+            repositories,
+            username,
+        )
+        activity = extract_activity_insights(
+            events,
+            username,
+            commit_entries=commit_entries or None,
+        )
         final_remaining = (
-            inspection_remaining
+            commit_remaining
+            if commit_remaining is not None
+            else inspection_remaining
             if inspection_remaining is not None
             else remaining
             if remaining is not None
+            else event_remaining
+            if event_remaining is not None
             else snapshot.rate_limit_remaining
         )
         final_reset = (
-            inspection_reset
+            commit_reset
+            if commit_reset is not None
+            else inspection_reset
             if inspection_reset is not None
             else reset
             if reset is not None
+            else event_reset
+            if event_reset is not None
             else snapshot.rate_limit_reset
         )
         result = GitHubSnapshot(
@@ -693,6 +793,7 @@ class GitHubClient:
             repositories=repositories,
             inspections=inspections,
             contributions=contributions,
+            activity=activity,
             organizations=organizations,
             rate_limit_remaining=final_remaining,
             rate_limit_reset=final_reset,

@@ -116,11 +116,45 @@ class GitHubContributions(BaseModel):
     rate_limit_reset: int | None = None
 
 
+class NotableCommit(BaseModel):
+    message: str
+    repository: str
+    url: str | None = None
+    occurred_at: datetime
+    kind: str
+
+
+class MergedPullRequest(BaseModel):
+    title: str
+    repository: str
+    url: str | None = None
+    occurred_at: datetime
+
+
+class ActivityInsights(BaseModel):
+    schema_version: str = "1"
+    sample_start: datetime | None = None
+    sample_end: datetime | None = None
+    commits_analyzed: int = 0
+    meaningful_commits: int = 0
+    features_shipped: int = 0
+    fixes_landed: int = 0
+    tests_and_docs: int = 0
+    refactors: int = 0
+    merged_pull_requests: list[MergedPullRequest] = Field(default_factory=list)
+    opened_pull_requests: int = 0
+    issues_opened: int = 0
+    repositories_touched: list[str] = Field(default_factory=list)
+    open_source_share: int = 0
+    notable_commits: list[NotableCommit] = Field(default_factory=list)
+
+
 class GitHubSnapshot(BaseModel):
     profile: GitHubProfile
     repositories: list[GitHubRepository] = Field(default_factory=list)
     inspections: list[RepositoryInspection] = Field(default_factory=list)
     contributions: GitHubContributions | None = None
+    activity: ActivityInsights | None = None
     organizations: list[str] = Field(default_factory=list)
     rate_limit_remaining: int | None
     rate_limit_reset: int | None

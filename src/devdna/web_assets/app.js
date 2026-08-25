@@ -160,6 +160,37 @@
     if (initialStatus && !applyPayload({ status: initialStatus })) tick();
   }
 
+  /* ---------- Copy-to-clipboard buttons ---------- */
+
+  function initCopyButtons() {
+    var buttons = document.querySelectorAll("[data-copy-target]");
+    if (!buttons.length) return;
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        var selector = button.getAttribute("data-copy-target");
+        var source = selector ? document.getElementById(selector) : null;
+        var text = source && "value" in source ? String(source.value) : "";
+        if (!text) return;
+        var markCopied = function () {
+          button.classList.add("copied");
+          var original = button.textContent;
+          button.textContent = "Copied";
+          window.setTimeout(function () {
+            button.classList.remove("copied");
+            button.textContent = original;
+          }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(markCopied, function () {});
+        } else {
+          source.select();
+          document.execCommand("copy");
+          markCopied();
+        }
+      });
+    });
+  }
+
   /* ---------- Scroll reveals ---------- */
 
   var REVEAL_SELECTOR = [
@@ -197,6 +228,11 @@
       startPolling();
     } catch (error) {
       /* Polling must never break the page. */
+    }
+    try {
+      initCopyButtons();
+    } catch (error) {
+      /* Copy buttons are optional. */
     }
     try {
       startReveals();

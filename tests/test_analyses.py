@@ -528,7 +528,7 @@ def test_recruiter_upload_rejects_invalid_and_large_files(tmp_path: Path) -> Non
         client.__exit__(None, None, None)
 
     assert invalid.status_code == 422
-    assert invalid.json()["detail"] == "Upload a .csv or .docx file"
+    assert invalid.json()["detail"] == "Upload a .csv, .docx, or .pdf file"
     assert oversized.status_code == 413
 
 

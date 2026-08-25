@@ -4,11 +4,15 @@ from io import BytesIO, StringIO
 from pathlib import Path
 
 from docx import Document
+from pypdf import PdfReader
 
 from devdna.schemas import USERNAME_PATTERN
 
 USERNAME_HEADERS = {"github", "github_id", "github_username", "username"}
-GITHUB_URL_PATTERN = re.compile(r"https?://(?:www\.)?github\.com/([A-Za-z0-9-]{1,39})(?:[\s/]|$)")
+GITHUB_URL_PATTERN = re.compile(
+    r"(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9-]{1,39})(?:[\s/,.;:!?)\]]|$)"
+)
+AT_MENTION_PATTERN = re.compile(r"(?:^|[\s(,@\"'])@([A-Za-z0-9-]{1,39})(?:[\s),.;:!?'\"]|$)")
 
 
 class RecruiterFileError(ValueError):
@@ -54,7 +58,13 @@ def csv_usernames(content: bytes) -> list[str]:
         return [row[header_index] for row in rows[1:] if len(row) > header_index]
     if all(len(row) == 1 for row in rows):
         return [row[0] for row in rows]
-    raise RecruiterFileError("CSV requires a github_username column or a single username column")
+    # Free-form CSV: scan every cell for profile links and @mentions.
+    scanned: list[str] = []
+    for row in rows:
+        for cell in row:
+            scanned.extend(GITHUB_URL_PATTERN.findall(cell))
+            scanned.extend(AT_MENTION_PATTERN.findall(cell))
+    return scanned
 
 
 def docx_usernames(content: bytes) -> list[str]:
@@ -66,6 +76,7 @@ def docx_usernames(content: bytes) -> list[str]:
     values: list[str] = []
     for paragraph in document.paragraphs:
         values.extend(GITHUB_URL_PATTERN.findall(paragraph.text))
+        values.extend(AT_MENTION_PATTERN.findall(paragraph.text))
     for table in document.tables:
         if not table.rows:
             continue
@@ -80,7 +91,24 @@ def docx_usernames(content: bytes) -> list[str]:
                 for row in table.rows[1:]
                 if len(row.cells) > header_index
             )
+            continue
+        for row in table.rows:
+            for cell in row.cells:
+                values.extend(GITHUB_URL_PATTERN.findall(cell))
     return values
+
+
+def pdf_usernames(content: bytes) -> list[str]:
+    try:
+        reader = PdfReader(BytesIO(content))
+        if reader.is_encrypted:
+            raise RecruiterFileError("The PDF file is password protected")
+        text = "\n".join((page.extract_text() or "") for page in reader.pages)
+    except RecruiterFileError:
+        raise
+    except Exception as error:
+        raise RecruiterFileError("The PDF file could not be read") from error
+    return GITHUB_URL_PATTERN.findall(text)
 
 
 def parse_recruiter_file(filename: str, content: bytes, maximum: int) -> list[str]:
@@ -89,6 +117,8 @@ def parse_recruiter_file(filename: str, content: bytes, maximum: int) -> list[st
         values = csv_usernames(content)
     elif extension == ".docx":
         values = docx_usernames(content)
+    elif extension == ".pdf":
+        values = pdf_usernames(content)
     else:
-        raise RecruiterFileError("Upload a .csv or .docx file")
+        raise RecruiterFileError("Upload a .csv, .docx, or .pdf file")
     return normalize_usernames(values, maximum)

@@ -157,6 +157,8 @@ def test_get_snapshot_paginates_until_it_finds_eligible_repositories() -> None:
             return httpx2.Response(200, json={"tree": [], "truncated": False})
         if request.url.path == "/repos/octocat/new/languages":
             return httpx2.Response(200, json={"Python": 500})
+        if request.url.path.endswith("/commits"):
+            return httpx2.Response(200, json=[])
         if request.url.params.get("page") == "2":
             repository = {**REPOSITORY, "id": 4, "name": "new", "full_name": "octocat/new"}
             return httpx2.Response(
@@ -235,6 +237,12 @@ test = ["pytest>=8"]
             return httpx2.Response(
                 200,
                 json={"Python": 900, "HTML": 100},
+                headers={"x-ratelimit-remaining": "55"},
+            )
+        if request.url.path.endswith("/commits"):
+            return httpx2.Response(
+                200,
+                json=[],
                 headers={"x-ratelimit-remaining": "55"},
             )
         raise AssertionError(f"unexpected request: {request.url}")
@@ -382,6 +390,9 @@ def test_aggregate_contributions_returns_none_when_empty() -> None:
         settings(),
         httpx2.MockTransport(lambda r: httpx2.Response(404)),
     )
-    result = client.get_contributions("octocat")
+    contributions, events, remaining, reset = asyncio.run(client.get_contributions("octocat"))
 
-    assert asyncio.run(result) is None
+    assert contributions is None
+    assert events == []
+    assert remaining is None
+    assert reset is None

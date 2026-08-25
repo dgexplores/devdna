@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from rq import Queue
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from devdna.activity import activity_window_label
 from devdna.analyses import analyses_for_owner, owner_requested_analysis, start_analysis
 from devdna.cv import CvFileError, align_cv_to_evidence, extract_cv_text
 from devdna.database import get_session
@@ -33,6 +34,7 @@ from devdna.readme import generate_profile_readme
 from devdna.recruiter import batch_response, create_batch
 from devdna.rubrics import get_rubric, role_label, supported_roles
 from devdna.schemas import (
+    ActivityInsights,
     AnalysisCreate,
     CvAlignment,
     EvidenceSnapshot,
@@ -43,6 +45,8 @@ from devdna.schemas import (
     JdSkillMatch,
     LearningPlan,
     LearningRecommendation,
+    MergedPullRequest,
+    NotableCommit,
     ReadmeDraft,
     RecruiterBatchResponse,
     RecruiterCandidateResult,
@@ -56,7 +60,7 @@ from devdna.web_sessions import SESSION_COOKIE, create_web_session, verify_web_s
 
 router = APIRouter(tags=["web"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
-ASSET_VERSION = "6"
+ASSET_VERSION = "7"
 
 
 def week_width(week: object) -> int:
@@ -559,6 +563,9 @@ def render_readme_page(username: str, analysis_id: str, draft: ReadmeDraft) -> s
         href="/reports/{escape(analysis_id, quote=True)}">
         Back to report
       </a>
+      <button class="button button-secondary" type="button" data-copy-target="markdown-draft">
+        Copy Markdown
+      </button>
       <a class="button button-primary"
         href="/reports/{escape(analysis_id, quote=True)}/readme.md{readme_style_query}">
         Download Markdown
@@ -835,13 +842,14 @@ def render_recruiter_home(error: str | None = None) -> str:
       enctype="multipart/form-data">
       <div class="form-heading">
         <h2>Create a batch</h2>
-        <p>Up to 50 candidates per CSV or DOCX file.</p>
+        <p>Up to 50 candidates per CSV, DOCX, or PDF file.</p>
       </div>
       {error_markup}
       <div class="field-group">
         <label for="candidate_file">Candidate file</label>
-        <input id="candidate_file" name="file" type="file" accept=".csv,.docx" required>
-        <p class="field-help">Use a github_username column or GitHub profile links.</p>
+        <input id="candidate_file" name="file" type="file" accept=".csv,.docx,.pdf" required>
+        <p class="field-help">Use a github_username column, GitHub profile links, or CV text —
+          DevDNA extracts every github.com profile it finds.</p>
       </div>
       <div class="field-group">
         <label for="recruiter_role">Target role</label>
@@ -929,6 +937,90 @@ def render_recruiter_batch(batch: RecruiterBatchResponse) -> str:
   <section class="candidate-list" aria-label="Candidate comparison">{cards}</section>
 </main>"""
     return page_shell("Candidate comparison | DevDNA", content)
+
+
+def _impact_stat(value: int | str, label: str) -> str:
+    return (
+        f'<div class="impact-stat"><strong>{escape(str(value))}</strong>'
+        f"<span>{escape(label)}</span></div>"
+    )
+
+
+def render_recent_impact(activity: ActivityInsights | None) -> str:
+    """Deep-search presentation of what the developer actually shipped recently."""
+    if activity is None or (activity.commits_analyzed == 0 and not activity.merged_pull_requests):
+        return ""
+    window = activity_window_label(activity)
+
+    def commit_item(commit: NotableCommit) -> str:
+        link = (
+            f'<a class="commit-repo" href="{escape(commit.url, quote=True)}" '
+            'target="_blank" rel="noopener noreferrer">view</a>'
+            if commit.url
+            else ""
+        )
+        repo_link = (
+            f'<a href="https://github.com/{escape(commit.repository, quote=True)}" '
+            f'target="_blank" rel="noopener noreferrer">{escape(commit.repository)}</a>'
+        )
+        return (
+            f'<li class="commit-row"><span class="commit-kind kind-{escape(commit.kind)}">'
+            f"{escape(commit.kind)}</span>"
+            f"<div><p>{escape(commit.message)}</p><span>{repo_link}</span></div>{link}</li>"
+        )
+
+    def pr_item(pull_request: MergedPullRequest) -> str:
+        repo_link = (
+            f'<a href="https://github.com/{escape(pull_request.repository, quote=True)}" '
+            f'target="_blank" rel="noopener noreferrer">{escape(pull_request.repository)}</a>'
+        )
+        link = (
+            f'<a class="commit-repo" href="{escape(pull_request.url, quote=True)}" '
+            'target="_blank" rel="noopener noreferrer">view</a>'
+            if pull_request.url
+            else ""
+        )
+        return (
+            '<li class="commit-row"><span class="commit-kind kind-merged">merged</span>'
+            f"<div><p>{escape(pull_request.title or 'Merged pull request')}</p>"
+            f"<span>{repo_link}</span></div>{link}</li>"
+        )
+
+    commits_html = (
+        "".join(commit_item(commit) for commit in activity.notable_commits[:6])
+        or '<p class="empty-note">No notable public commits in this window.</p>'
+    )
+    prs_html = (
+        "".join(pr_item(item) for item in activity.merged_pull_requests)
+        or '<p class="empty-note">No merged pull requests in this window.</p>'
+    )
+    oss_share = f"{activity.open_source_share}%"
+    return f"""
+  <section class="impact-section" aria-labelledby="impact-title">
+    <div class="section-heading">
+      <h2 id="impact-title">Recent impact</h2>
+      <p>What the public event feed shows for the {escape(window)} — meaningful work only,
+        no vanity counts.</p>
+    </div>
+    <div class="impact-grid">
+      <div class="impact-stats">
+        {_impact_stat(activity.features_shipped, "features shipped")}
+        {_impact_stat(activity.fixes_landed, "fixes landed")}
+        {_impact_stat(len(activity.merged_pull_requests), "PRs merged")}
+        {_impact_stat(oss_share, "open-source share")}
+      </div>
+      <div class="impact-columns">
+        <div class="impact-block">
+          <h3>Notable commits</h3>
+          <ul class="commit-list">{commits_html}</ul>
+        </div>
+        <div class="impact-block">
+          <h3>Merged pull requests</h3>
+          <ul class="commit-list">{prs_html}</ul>
+        </div>
+      </div>
+    </div>
+  </section>"""
 
 
 def render_profile_overview(
@@ -1085,6 +1177,7 @@ def render_report_page(
     *,
     profile: GitHubProfile | None = None,
     contributions: GitHubContributions | None = None,
+    activity: ActivityInsights | None = None,
     repositories: list[GitHubRepository] | None = None,
     organizations: list[str] | None = None,
 ) -> str:
@@ -1166,6 +1259,7 @@ def render_report_page(
     </a>
   </nav>
   {render_profile_overview(username, profile, contributions, report)}
+  {render_recent_impact(activity)}
   <section class="context-section" aria-labelledby="context-title">
     <div class="section-heading">
       <h2 id="context-title">Project context</h2>
@@ -1605,6 +1699,7 @@ async def report_page(
     report = ReportSnapshot.model_validate(analysis.report_snapshot)
     profile = None
     contributions = None
+    activity = None
     repositories: list[GitHubRepository] = []
     organizations: list[str] = []
     if analysis.profile_snapshot:
@@ -1618,6 +1713,12 @@ async def report_page(
                 contributions = GitHubContributions.model_validate(snapshot_contributions)
             except ValidationError:
                 contributions = None
+        snapshot_activity = analysis.profile_snapshot.get("activity")
+        if snapshot_activity:
+            try:
+                activity = ActivityInsights.model_validate(snapshot_activity)
+            except ValidationError:
+                activity = None
         snapshot_repositories = analysis.profile_snapshot.get("repositories")
         if snapshot_repositories:
             try:
@@ -1641,6 +1742,7 @@ async def report_page(
             report,
             profile=profile,
             contributions=contributions,
+            activity=activity,
             repositories=repositories,
             organizations=organizations,
         )

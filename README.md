@@ -88,6 +88,12 @@ If repository collection fails after the public profile succeeds, the analysis r
 
 A completed or partial response also includes `evidence_snapshot`. Evidence version `python-backend-evidence-v1` derives only from saved repository file paths and normalized Python manifest dependencies. Every claim contains direct GitHub source links; commit counts and contribution streaks are not analyzer inputs. See [the evidence rules](docs/EVIDENCE_RULES.md).
 
+The report's **Recent impact** section adds a deep-search view of the developer's actual recent
+work: commits are read directly from their selected repositories and classified deterministically
+(features, fixes, tests, refactors) with noise filters for merges, bot bumps, and placeholder
+messages; merged pull requests, opened issues, open-source share, and touched repositories come
+from the public event feed. Every notable commit links to its exact commit on GitHub.
+
 Beyond the Python backend role, DevDNA supports the `frontend_react_developer` role end to end with
 its own versioned rubric (`frontend_react_developer:v1`), React-specific evidence rules that read
 bounded `package.json` manifests, role-scoped report and learning-plan versions, and recruiter
@@ -124,8 +130,9 @@ Its final section contains separately labeled, dated market signals with primary
 signals do not affect the evidence report. The typed plan is available at
 `/v1/analyses/ANALYSIS_ID/learning`.
 
-Authenticated recruiter users can open `/recruiter` and upload a CSV or DOCX containing public
-GitHub usernames. The batch reuses the same evidence engine and compares candidates only by
+Authenticated recruiter users can open `/recruiter` and upload a CSV, DOCX, or PDF containing
+public GitHub usernames — DevDNA extracts every `github.com/<user>` link and @mention it finds,
+so a candidate CV works as the batch file directly. The batch reuses the same evidence engine and compares candidates only by
 verified coverage of the selected role rubric. Each candidate row also surfaces detected
 capability highlights — concrete technologies and practices found in inspected files (frameworks,
 test runners, container delivery, infrastructure) — so comparison reflects actual implementations
