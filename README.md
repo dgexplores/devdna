@@ -22,6 +22,57 @@ compose.yaml    local API, worker, PostgreSQL, and Redis stack
 
 Read [the product specification](docs/PRODUCT_SPEC.md), [architecture](docs/ARCHITECTURE.md), [security baseline](docs/SECURITY.md), [operations runbook](docs/OPERATIONS.md), and [delivery plan](docs/DELIVERY_PLAN.md) before implementation.
 
+## Status: achieved
+
+Everything below is implemented, covered by automated tests (120), verified live against real
+GitHub accounts through the full Docker stack, and green in CI.
+
+- **Analysis engine** — GitHub username + role → evidence-backed report. Reads bounded file
+  trees, manifests, languages; selects up to 10 recent non-fork repos; partial results survive
+  collection failures.
+- **Two roles end-to-end** — `python_backend_developer` and `frontend_react_developer`, each
+  with a versioned rubric.
+- **Deep activity intelligence** — Recent impact section built from real commits read directly
+  from repositories, deterministically classified (features / fixes / tests / refactors) with
+  noise filters for merges, bots, and placeholder messages; merged PRs, opened issues, OSS share,
+  and touched repositories from the public event feed. Every notable commit links to GitHub.
+- **JD fit check** — paste a job description; demanded skills are matched against saved evidence,
+  verified demands carry source links, unmet demands become a preparation backlog ordered by how
+  often the JD asks for them. Description text is processed in memory only.
+- **CV alignment** — PDF/DOCX CV vs saved evidence; verified vs self-reported skills never mix.
+- **README studio** — evidence-constrained profile README drafts, three layouts, Markdown
+  download plus copy-to-clipboard, optional CV comparison.
+- **Learning plan** — every unverified rubric requirement mapped to outcomes, a portfolio
+  project, publishable evidence artifacts, and dated market signals.
+- **Recruiter batches** — CSV, DOCX, or PDF upload (up to 50 candidates); extracts github.com
+  links and @mentions from free-form text so candidate CVs work as batch files; ranks by rubric
+  coverage with detected capability chips; pending candidates stay unranked; human review is
+  required by design.
+- **Production hardening** — bearer API keys, per-client atomic rate limits that fail closed,
+  signed HttpOnly web sessions, bounded request bodies, security headers, request IDs, Prometheus
+  metrics, 90-day retention command, verified backup/restore scripts, load smoke threshold.
+- **Web UX** — live status polling on pending pages (no meta-refresh), scroll-reveal motion,
+  reduced-motion support, fully usable without JavaScript.
+
+## Status: not done yet
+
+Deliberately out of scope for this repository — each needs an external account or decision:
+
+- **Real deployment** — `render.yaml` is ready; needs your Render account, managed PostgreSQL,
+  and Redis instance. Staging boot gate enforces `DEVDNA_API_KEYS` and
+  `DEVDNA_WEB_SESSION_SECRET`.
+- **Clerk sign-in keys** — the Clerk flow ships but needs `DEVDNA_CLERK_PUBLISHABLE_KEY`
+  (+ secret key for verification) to activate.
+- **GitHub token** — `DEVDNA_GITHUB_TOKEN` raises the API rate limit from 60 to 5,000 requests
+  per hour for deeper inspections.
+- **LLM-assisted summaries** — report generation stays deterministic; any future LLM layer must
+  remain constrained to the saved evidence JSON.
+- **Private repository access** — requires a GitHub App OAuth flow; release 1 intentionally
+  processes public evidence only.
+- **Commit quality beyond message classification** — current scoring is deterministic
+  message/file classification; deeper diffs-per-commit analysis would multiply API cost and is
+  deferred until a token-bearing deployment justifies it.
+
 ## Local development
 
 Install `uv`, then:
