@@ -9,12 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from devdna.analyses import get_queue, start_analysis
 from devdna.database import get_session
+from devdna.jd import capability_highlights_from_keys
 from devdna.models import AnalysisRun, RecruiterBatch, RecruiterCandidate
 from devdna.recruiter_files import RecruiterFileError, parse_recruiter_file
 from devdna.rubrics import supported_roles
 from devdna.schemas import (
     AnalysisCreate,
     AnalysisStatus,
+    EvidenceSnapshot,
     RecruiterBatchResponse,
     RecruiterCandidateResult,
     ReportSnapshot,
@@ -58,6 +60,16 @@ async def batch_response(
             if analysis.report_snapshot
             else None
         )
+        evidence = (
+            EvidenceSnapshot.model_validate(analysis.evidence_snapshot)
+            if analysis.evidence_snapshot
+            else None
+        )
+        highlights = (
+            capability_highlights_from_keys([item.key for item in evidence.items])
+            if evidence
+            else []
+        )
         candidates.append(
             RecruiterCandidateResult(
                 rank=None,
@@ -69,6 +81,7 @@ async def batch_response(
                 alignment_label=report.alignment_label if report else None,
                 strengths=[item.title for item in report.strengths] if report else [],
                 gaps=[item.title for item in report.gaps] if report else [],
+                capability_highlights=highlights,
             )
         )
 

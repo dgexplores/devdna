@@ -126,9 +126,19 @@ signals do not affect the evidence report. The typed plan is available at
 
 Authenticated recruiter users can open `/recruiter` and upload a CSV or DOCX containing public
 GitHub usernames. The batch reuses the same evidence engine and compares candidates only by
-verified coverage of the selected role rubric. Pending candidates remain unranked, every result
-opens its evidence report, and the interface explicitly requires human review. The API endpoints
-are `POST /v1/recruiter/batches` and `GET /v1/recruiter/batches/BATCH_ID`.
+verified coverage of the selected role rubric. Each candidate row also surfaces detected
+capability highlights — concrete technologies and practices found in inspected files (frameworks,
+test runners, container delivery, infrastructure) — so comparison reflects actual implementations
+rather than activity counts. Pending candidates remain unranked, every result opens its evidence
+report, and the interface explicitly requires human review. The API endpoints are
+`POST /v1/recruiter/batches` and `GET /v1/recruiter/batches/BATCH_ID`.
+
+Every completed analysis can also be compared against a specific job description. Open
+`/reports/ANALYSIS_ID/jd` or call `POST /v1/analyses/ANALYSIS_ID/jd-alignment` with the
+description text: DevDNA matches each recognized skill demand against saved repository evidence,
+lists verified demands with their exact source links, and orders unmet demands by how often the
+description asks for them — a preparation backlog grounded in evidence, never invented. The
+description text is processed in memory and is not stored.
 
 Production operations include a 90-day terminal-analysis retention command, verified PostgreSQL backup/restore scripts, migration checks in CI, dependency update automation, and a bounded read-path load smoke test. Exact commands and failure procedures are in [the operations runbook](docs/OPERATIONS.md).
 

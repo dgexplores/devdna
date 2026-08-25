@@ -50,3 +50,10 @@ Each gap receives one action in rubric order. The action explains what to build 
 - A queued or running JSON report returns `409`.
 - A queued or running web report returns `202` and polls the analysis API in the background,
   updating itself live until the report is ready (no full-page meta refresh).
+- `POST /v1/analyses/{analysis_id}/jd-alignment` compares pasted job-description text with the
+  saved evidence snapshot. A skill demand is `verified` only when saved evidence keys back it,
+  always with direct source links; unmet demands are ordered by demand frequency in the text.
+  The description text is processed in memory and never stored.
+- Recruiter candidate results carry `capability_highlights`: recruiter-readable technologies
+  derived from distinct evidence keys, so comparison shows what candidates actually built with.
+  Highlights are display-only and never reorder rubric coverage.

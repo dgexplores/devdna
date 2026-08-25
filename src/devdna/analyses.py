@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from devdna.cv import CvFileError, align_cv_to_evidence, extract_cv_text
 from devdna.database import get_session
+from devdna.jd import JdTextError, align_jd_to_evidence, validate_jd_text
 from devdna.jobs import collect_profile_job
 from devdna.learning import generate_learning_plan
 from devdna.models import AnalysisRequest, AnalysisRun
@@ -19,6 +20,8 @@ from devdna.schemas import (
     AnalysisResponse,
     CvAlignment,
     EvidenceSnapshot,
+    JdAlignment,
+    JdAlignmentCreate,
     LearningPlan,
     ReadmeDraft,
     ReportSnapshot,
@@ -289,3 +292,31 @@ async def create_cv_alignment(
         text,
         evidence,
     )
+
+
+@router.post("/{analysis_id}/jd-alignment", response_model=JdAlignment)
+async def create_jd_alignment(
+    analysis_id: str,
+    request: Request,
+    session: SessionDependency,
+    owner_id: OwnerDependency,
+    payload: JdAlignmentCreate,
+) -> JdAlignment:
+    analysis = await session.get(AnalysisRun, analysis_id)
+    if analysis is None or not await owner_requested_analysis(session, owner_id, analysis_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.evidence_snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="JD alignment is not ready",
+        )
+    settings = request.app.state.settings
+    try:
+        jd_text = validate_jd_text(payload.jd_text, max_characters=settings.jd_max_characters)
+    except JdTextError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+    evidence = EvidenceSnapshot.model_validate(analysis.evidence_snapshot)
+    return align_jd_to_evidence(analysis.github_username, jd_text, evidence)

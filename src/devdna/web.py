@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from devdna.analyses import analyses_for_owner, owner_requested_analysis, start_analysis
 from devdna.cv import CvFileError, align_cv_to_evidence, extract_cv_text
 from devdna.database import get_session
+from devdna.jd import JdTextError, align_jd_to_evidence, validate_jd_text
 from devdna.learning import generate_learning_plan
 from devdna.models import AnalysisRun, RecruiterBatch
 from devdna.readme import generate_profile_readme
@@ -38,6 +39,8 @@ from devdna.schemas import (
     GitHubContributions,
     GitHubProfile,
     GitHubRepository,
+    JdAlignment,
+    JdSkillMatch,
     LearningPlan,
     LearningRecommendation,
     ReadmeDraft,
@@ -860,6 +863,15 @@ def render_candidate(candidate: RecruiterCandidateResult) -> str:
         if candidate.requirements_met is not None
         else "Analyzing"
     )
+    highlights = "".join(
+        f'<span class="capability-chip">{escape(capability)}</span>'
+        for capability in candidate.capability_highlights
+    )
+    highlight_block = (
+        f'<div class="capability-chips" aria-label="Detected capabilities">{highlights}</div>'
+        if highlights
+        else ""
+    )
     return f"""
 <article class="candidate-row">
   <div class="candidate-rank">{candidate.rank if candidate.rank is not None else "..."}</div>
@@ -869,6 +881,7 @@ def render_candidate(candidate: RecruiterCandidateResult) -> str:
       <strong>{coverage}</strong>
     </div>
     <p>{escape(candidate.alignment_label or "Repository analysis is still in progress.")}</p>
+    {highlight_block}
     <div class="candidate-evidence">
       <div><h4>Verified</h4><p>{escape(", ".join(candidate.strengths) or "Pending")}</p></div>
       <div><h4>Not verified</h4><p>{escape(", ".join(candidate.gaps) or "Pending")}</p></div>
@@ -1146,6 +1159,10 @@ def render_report_page(
     <a href="/reports/{escape(analysis_id, quote=True)}/learning">
       <strong>Learning plan</strong>
       <span>Turn evidence gaps into portfolio work</span>
+    </a>
+    <a href="/reports/{escape(analysis_id, quote=True)}/jd">
+      <strong>Role fit vs job description</strong>
+      <span>Paste a JD and see exactly what your evidence is missing</span>
     </a>
   </nav>
   {render_profile_overview(username, profile, contributions, report)}
@@ -1630,6 +1647,127 @@ async def report_page(
     )
 
 
+def render_jd_form_page(
+    username: str,
+    analysis_id: str,
+    *,
+    error: str | None = None,
+    jd_text: str = "",
+) -> str:
+    error_markup = f'<p class="form-error" role="alert">{escape(error)}</p>' if error else ""
+    content = f"""
+{topbar_nav("Role fit check")}
+<main class="cv-alignment-shell">
+  <section class="cv-result-hero">
+    <p class="eyebrow">Evidence-constrained comparison</p>
+    <h1>What does {escape(username)}’s GitHub prove for this job?</h1>
+    <p>Paste the requirements section of a job description. DevDNA matches each demand against
+      saved repository evidence — verified rows link the exact files, missing rows become your
+      preparation backlog. The description text is processed in memory and is not stored.</p>
+  </section>
+  <form class="jd-form" method="post" action="/reports/{escape(analysis_id, quote=True)}/jd">
+    {error_markup}
+    <div class="field-group">
+      <label for="jd_text">Job description text</label>
+      <textarea id="jd_text" name="jd_text" rows="12" required
+        placeholder="Requirements: 5+ years of Python, FastAPI, PostgreSQL,
+        CI/CD with GitHub Actions, Docker...">{escape(jd_text)}</textarea>
+      <p class="field-help">Paste up to 20,000 characters. Skills are matched by exact
+        terminology — include the technologies section verbatim.</p>
+    </div>
+    <button class="button button-primary" type="submit">Compare with evidence</button>
+  </form>
+</main>"""
+    return page_shell(f"{username} | DevDNA role fit", content)
+
+
+def render_jd_skill_group(skills: list[JdSkillMatch], *, verified: bool) -> str:
+    wanted = [skill for skill in skills if (skill.status == "verified") == verified]
+    if not wanted:
+        message = (
+            "No recognized demand has public evidence yet."
+            if verified
+            else "Nothing missing — every recognized demand is verified."
+        )
+        return f'<p class="empty-note">{message}</p>'
+    entries = []
+    for skill in wanted:
+        sources = "".join(
+            f'<li><a href="{escape(source.url, quote=True)}" target="_blank" '
+            f'rel="noopener noreferrer">{escape(source.repository)} / '
+            f"{escape(source.path)}</a></li>"
+            for source in skill.evidence_sources[:4]
+        )
+        source_list = f'<ul class="cv-source-list">{sources}</ul>' if sources else ""
+        demand = (
+            f'<span class="jd-demand">demanded {skill.mentions}×</span>'
+            if skill.mentions > 1
+            else ""
+        )
+        entries.append(
+            f'<li class="cv-skill"><strong>{escape(skill.skill)}</strong>{demand}{source_list}</li>'
+        )
+    return f'<ul class="cv-skill-list">{"".join(entries)}</ul>'
+
+
+def render_jd_alignment_page(
+    username: str,
+    analysis_id: str,
+    alignment: JdAlignment,
+) -> str:
+    guidance = "".join(f"<li>{escape(item)}</li>" for item in alignment.guidance)
+    missing_skills = "".join(
+        f"<li><strong>{escape(skill.skill)}</strong>"
+        f"<span>demanded {skill.mentions}× in the description</span></li>"
+        for skill in alignment.skills
+        if skill.status == "unverified"
+    )
+    backlog = (
+        f'<ol class="jd-backlog">{missing_skills}</ol>'
+        if missing_skills
+        else '<p class="empty-note">No evidence gaps for this description.</p>'
+    )
+    content = f"""
+{topbar_nav("Role fit result")}
+<main class="cv-alignment-shell">
+  <section class="cv-result-hero">
+    <p class="eyebrow">{alignment.verified_count} of {alignment.requirements_considered}
+      demands verified</p>
+    <h1>{escape(username)} vs this job description.</h1>
+    <p>{escape(alignment.suggested_summary)}</p>
+    <div class="readme-actions">
+      <a class="button button-secondary"
+        href="/reports/{escape(analysis_id, quote=True)}/jd">Compare another description</a>
+      <a class="button button-secondary"
+        href="/reports/{escape(analysis_id, quote=True)}/learning">Turn gaps into a plan</a>
+      <a class="button button-ghost"
+        href="/v1/analyses/{escape(analysis_id, quote=True)}/jd-alignment">Open JSON</a>
+    </div>
+  </section>
+  <section class="cv-groups" aria-label="Job description fit">
+    <article class="cv-group verified">
+      <p class="row-state">Verified in GitHub</p>
+      <h2>Demands your evidence satisfies</h2>
+      <p>Direct repository proof exists for each item.</p>
+      {render_jd_skill_group(alignment.skills, verified=True)}
+    </article>
+    <article class="cv-group unverified">
+      <p class="row-state">Demanded but not proven</p>
+      <h2>Evidence still missing</h2>
+      <p>The description asks for these; current public repositories do not demonstrate them.
+        They never count as satisfied.</p>
+      {render_jd_skill_group(alignment.skills, verified=False)}
+    </article>
+  </section>
+  <section class="cv-guidance" aria-labelledby="jd-guidance-title">
+    <h2 id="jd-guidance-title">Preparation backlog</h2>
+    {backlog}
+    <ul>{guidance}</ul>
+  </section>
+</main>"""
+    return page_shell(f"{username} | DevDNA role fit", content)
+
+
 @router.get("/reports/{analysis_id}/readme", response_class=HTMLResponse)
 async def readme_page(
     analysis_id: str,
@@ -1724,6 +1862,84 @@ async def cv_alignment_page(
         EvidenceSnapshot.model_validate(analysis.evidence_snapshot),
     )
     return HTMLResponse(render_cv_alignment_page(analysis.github_username, analysis.id, alignment))
+
+
+@router.get("/reports/{analysis_id}/jd", response_class=HTMLResponse)
+async def jd_form_page(
+    analysis_id: str,
+    request: Request,
+    session: SessionDependency,
+) -> HTMLResponse:
+    owner_id = verify_web_session(
+        request.cookies.get(SESSION_COOKIE),
+        request.app.state.web_session_secret,
+    )
+    resolved_owner = owner_id or ("public" if not request.app.state.api_credentials else None)
+    analysis = await session.get(AnalysisRun, analysis_id)
+    if (
+        analysis is None
+        or resolved_owner is None
+        or not await owner_requested_analysis(session, resolved_owner, analysis_id)
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.evidence_snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="JD alignment is not ready",
+        )
+    return HTMLResponse(render_jd_form_page(analysis.github_username, analysis.id))
+
+
+@router.post("/reports/{analysis_id}/jd", response_class=HTMLResponse)
+async def jd_alignment_page(
+    analysis_id: str,
+    request: Request,
+    session: SessionDependency,
+) -> HTMLResponse:
+    owner_id = verify_web_session(
+        request.cookies.get(SESSION_COOKIE),
+        request.app.state.web_session_secret,
+    )
+    resolved_owner = owner_id or ("public" if not request.app.state.api_credentials else None)
+    analysis = await session.get(AnalysisRun, analysis_id)
+    if (
+        analysis is None
+        or resolved_owner is None
+        or not await owner_requested_analysis(session, resolved_owner, analysis_id)
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.evidence_snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="JD alignment is not ready",
+        )
+
+    form = await request.form()
+    jd_text = str(form.get("jd_text", ""))
+    settings = request.app.state.settings
+
+    def form_error(message: str) -> HTMLResponse:
+        return HTMLResponse(
+            render_jd_form_page(
+                analysis.github_username,
+                analysis.id,
+                error=message,
+                jd_text=jd_text[: settings.jd_max_characters],
+            ),
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+
+    try:
+        cleaned = validate_jd_text(jd_text, max_characters=settings.jd_max_characters)
+    except JdTextError as error:
+        return form_error(str(error))
+
+    alignment = align_jd_to_evidence(
+        analysis.github_username,
+        cleaned,
+        EvidenceSnapshot.model_validate(analysis.evidence_snapshot),
+    )
+    return HTMLResponse(render_jd_alignment_page(analysis.github_username, analysis.id, alignment))
 
 
 @router.get("/reports/{analysis_id}/learning", response_class=HTMLResponse)

@@ -26,6 +26,10 @@ class AnalysisCreate(BaseModel):
         return value.lower()
 
 
+class JdAlignmentCreate(BaseModel):
+    jd_text: str = Field(min_length=1, max_length=200_000)
+
+
 class AnalysisResponse(BaseModel):
     id: str
     github_username: str
@@ -233,6 +237,7 @@ class RecruiterCandidateResult(BaseModel):
     alignment_label: str | None = None
     strengths: list[str] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
+    capability_highlights: list[str] = Field(default_factory=list)
 
 
 class RecruiterBatchResponse(BaseModel):
@@ -255,5 +260,24 @@ class CvAlignment(BaseModel):
     github_username: str
     source_filename: str
     skills: list[CvSkillAlignment]
+    suggested_summary: str
+    guidance: list[str]
+
+
+class JdSkillMatch(BaseModel):
+    skill: str
+    mentions: int
+    status: Literal["verified", "unverified"]
+    evidence_sources: list[EvidenceSource] = Field(default_factory=list)
+
+
+class JdAlignment(BaseModel):
+    schema_version: str
+    analyzer_version: str
+    github_username: str
+    requirements_considered: int
+    skills: list[JdSkillMatch]
+    verified_count: int
+    missing_skills: list[str]
     suggested_summary: str
     guidance: list[str]

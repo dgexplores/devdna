@@ -1587,6 +1587,95 @@ footer p {
   background: var(--surface-2);
 }
 
+.jd-form {
+  display: grid;
+  gap: 1.1rem;
+  padding: clamp(1.1rem, 2.5vw, 1.7rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.jd-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 220px;
+  padding: 0.85rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--bg);
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  transition: border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
+}
+
+.jd-form textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.jd-form textarea::placeholder {
+  color: var(--faint);
+}
+
+.jd-demand {
+  display: inline-block;
+  margin-left: 0.6rem;
+  padding: 0.14rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.jd-backlog {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1.1rem 0 1.4rem;
+  padding-left: 1.3rem;
+}
+
+.jd-backlog li {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.jd-backlog li strong {
+  color: var(--ink);
+}
+
+.jd-backlog li span {
+  display: block;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+}
+
+.capability-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.9rem;
+}
+
+.capability-chip {
+  padding: 0.32rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
 .cv-guidance ul {
   display: grid;
   gap: 0.6rem;

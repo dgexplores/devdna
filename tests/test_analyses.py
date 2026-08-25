@@ -429,9 +429,60 @@ def test_recruiter_batch_is_bounded_and_owner_scoped(tmp_path: Path) -> None:
         "hubot",
     ]
     assert all(item["rank"] is None for item in created.json()["candidates"])
+    assert all(item["capability_highlights"] == [] for item in created.json()["candidates"])
     assert owner_view.status_code == 200
     assert other_owner_view.status_code == 404
     assert len(queue.jobs) == 2
+
+
+def test_recruiter_candidate_rows_surface_capability_highlights(tmp_path: Path) -> None:
+    from devdna.schemas import EvidenceItem, EvidenceSnapshot
+
+    evidence = EvidenceSnapshot(
+        schema_version="1",
+        analyzer_version="test",
+        target_role="python_backend_developer",
+        rubric_version="python_backend_developer:v1",
+        repositories_analyzed=1,
+        items=[
+            EvidenceItem(
+                key=key,
+                category="capability",
+                claim=f"{key} present",
+                repository="octocat/backend",
+                sources=[],
+            )
+            for key in (
+                "python.project",
+                "api.framework.fastapi",
+                "react.framework",
+                "delivery.container",
+            )
+        ],
+    )
+    database_path = tmp_path / "recruiter-capabilities.db"
+    client = create_test_client(database_path, FakeQueue())
+    try:
+        created = client.post(
+            "/v1/recruiter/batches",
+            data={"target_role": "python_backend_developer"},
+            files={"file": ("candidates.csv", b"github_username\noctocat\n", "text/csv")},
+        )
+        analysis_id = created.json()["candidates"][0]["analysis_id"]
+        batch_id = created.json()["id"]
+    finally:
+        client.__exit__(None, None, None)
+
+    save_completed_snapshots(database_path, analysis_id, evidence)
+    client = create_test_client(database_path, FakeQueue())
+    try:
+        batch = client.get(f"/v1/recruiter/batches/{batch_id}")
+    finally:
+        client.__exit__(None, None, None)
+
+    candidate = batch.json()["candidates"][0]
+    assert candidate["capability_highlights"][:2] == ["Python projects", "FastAPI services"]
+    assert "React" in candidate["capability_highlights"]
 
 
 def test_recruiter_batch_accepts_react_role_and_rejects_unknown_role(tmp_path: Path) -> None:
