@@ -44,39 +44,57 @@ compose.yaml    local API, worker, PostgreSQL, and Redis stack
 
 Read [the product specification](docs/PRODUCT_SPEC.md), [architecture](docs/ARCHITECTURE.md), [security baseline](docs/SECURITY.md), [operations runbook](docs/OPERATIONS.md), and [delivery plan](docs/DELIVERY_PLAN.md) before implementation.
 
-## Status: achieved
+## Capabilities today
 
-Everything below is implemented, covered by automated tests (120), verified live against real
+Everything below is implemented, covered by automated tests (129), verified live against real
 GitHub accounts through the full Docker stack, and green in CI.
 
-- **Analysis engine** — GitHub username + role → evidence-backed report. Reads bounded file
-  trees, manifests, languages; selects up to 10 recent non-fork repos; partial results survive
-  collection failures.
-- **Two roles end-to-end** — `python_backend_developer` and `frontend_react_developer`, each
-  with a versioned rubric.
-- **Deep activity intelligence** — Recent impact section built from real commits read directly
-  from repositories, deterministically classified (features / fixes / tests / refactors) with
-  noise filters for merges, bots, and placeholder messages; merged PRs, opened issues, OSS share,
-  and touched repositories from the public event feed. Every notable commit links to GitHub.
-- **JD fit check** — paste a job description; demanded skills are matched against saved evidence,
-  verified demands carry source links, unmet demands become a preparation backlog ordered by how
-  often the JD asks for them. Description text is processed in memory only.
-- **CV alignment** — PDF/DOCX CV vs saved evidence; verified vs self-reported skills never mix.
-- **README studio** — evidence-constrained profile README drafts, three layouts, Markdown
-  download plus copy-to-clipboard, optional CV comparison.
-- **Learning plan** — every unverified rubric requirement mapped to outcomes, a portfolio
-  project, publishable evidence artifacts, and dated market signals.
-- **Recruiter batches** — CSV, DOCX, or PDF upload (up to 50 candidates); extracts github.com
-  links and @mentions from free-form text so candidate CVs work as batch files; ranks by rubric
-  coverage with detected capability chips; pending candidates stay unranked; human review is
-  required by design.
-- **Production hardening** — bearer API keys, per-client atomic rate limits that fail closed,
-  signed HttpOnly web sessions, bounded request bodies, security headers, request IDs, Prometheus
-  metrics, 90-day retention command, verified backup/restore scripts, load smoke threshold.
-- **Web UX** — live status polling on pending pages (no meta-refresh), scroll-reveal motion,
-  reduced-motion support, fully usable without JavaScript.
+**For developers**
 
-## Status: not done yet
+- **Evidence report** — GitHub username + role → strengths, gaps, and prioritized actions where
+  every claim links the exact public file that proves it. Reads bounded file trees, manifests,
+  and languages; selects up to 10 recent non-fork repos; partial results survive collection
+  failures with a visible warning. Two versioned rubrics: `python_backend_developer` and
+  `frontend_react_developer`.
+- **Recent impact (deep search)** — real commits read directly from your repositories and
+  classified deterministically (features / fixes / tests / refactors), with noise filters for
+  merges, bot bumps, and placeholder messages. Plus merged PRs, opened issues, open-source share,
+  and touched repositories from the public event feed — each notable commit links to GitHub.
+- **JD fit check** — paste any job description; demanded skills match against saved evidence.
+  Verified demands carry source links; unmet demands become a preparation backlog ordered by how
+  often the description asks for them. Description text is processed in memory only.
+- **CV alignment** — upload a PDF/DOCX CV and see which stated skills public evidence can verify;
+  CV-only claims never enter the verified summary.
+- **README studio** — profile README drafts constrained to saved evidence, three layouts,
+  Markdown download plus copy-to-clipboard.
+- **Learning plan** — every unverified rubric requirement mapped to learning outcomes, a
+  portfolio project brief, exact artifacts to publish as evidence, and dated market signals.
+
+**For hiring teams**
+
+- **Recruiter batches** — CSV, DOCX, or PDF upload for up to 50 candidates. DevDNA extracts
+  github.com links and @mentions from free-form text, so a candidate CV works as the batch file.
+  Candidates rank by verified rubric coverage with detected capability chips showing the actual
+  technologies found in their files; pending candidates stay unranked; human review is required
+  by design.
+
+**Three ways in**
+
+- **Web UI** — dark developer-tool design system, live-polling pending pages (no meta-refresh),
+  scroll-reveal motion, reduced-motion support, fully usable without JavaScript.
+- **REST API** — typed JSON for every surface: analyses, reports, README drafts, learning plans,
+  JD alignment, CV alignment, recruiter batches.
+- **CLI** — `devdna analyze|report|jd|cv|readme|learning|status|history|health` with `--wait`
+  polling, `--json` machine output, and bearer-key auth (see below).
+
+**Production hardening**
+
+Bearer API keys, per-client atomic rate limits that fail closed, signed HttpOnly web sessions,
+bounded request bodies, security headers, request IDs on every response, Prometheus metrics,
+structured JSON logs, 90-day retention command, verified backup/restore scripts, and a load-smoke
+threshold.
+
+## Not done yet
 
 Deliberately out of scope for this repository — each needs an external account or decision:
 
@@ -94,6 +112,8 @@ Deliberately out of scope for this repository — each needs an external account
 - **Commit quality beyond message classification** — current scoring is deterministic
   message/file classification; deeper diffs-per-commit analysis would multiply API cost and is
   deferred until a token-bearing deployment justifies it.
+- **More role rubrics** — adding roles (DevOps, data engineering, mobile) means authoring new
+  versioned rubrics + evidence rules following the existing pattern.
 
 ## Local development
 
