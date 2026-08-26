@@ -3,7 +3,7 @@ services:
   - type: web
     name: devdna-api
     runtime: docker
-    repo: https://github.com/dgexplores/DevDNAv2.git
+    repo: https://github.com/dgexplores/DevDNA.git
     plan: free
     region: oregon
     dockerContext: .
@@ -39,7 +39,7 @@ services:
   - type: worker
     name: devdna-worker
     runtime: docker
-    repo: https://github.com/dgexplores/DevDNAv2.git
+    repo: https://github.com/dgexplores/DevDNA.git
     plan: free
     region: oregon
     dockerContext: .
