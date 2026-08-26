@@ -10,6 +10,28 @@ DevDNA analyzes meaningful GitHub project evidence—such as tests, CI, document
 
 The report must identify every strength, gap, and recommendation with the repository evidence that supports it.
 
+## Command-line interface
+
+The `devdna` CLI drives the whole product from the terminal against any running API:
+
+```bash
+uv sync                                   # installs the devdna entry point
+export DEVDNA_API_URL=http://localhost:8000
+uv run devdna health
+
+uv run devdna analyze octocat --role python_backend_developer --wait
+uv run devdna report ANALYSIS_ID
+uv run devdna jd ANALYSIS_ID --text-file senior-backend.txt
+uv run devdna readme ANALYSIS_ID --style badges --out README.md
+uv run devdna learning ANALYSIS_ID
+uv run devdna cv ANALYSIS_ID candidate.pdf
+uv run devdna history
+```
+
+Add `--json` for machine-readable output. When the API enforces keys, set `DEVDNA_API_KEY`
+to the same `client.secret` bearer value. Exit code `0` means success; `1` means an API or
+analysis error.
+
 ## Repository layout
 
 ```text

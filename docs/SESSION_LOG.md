@@ -47,6 +47,15 @@ session that took DevDNA from milestone-complete to a live-verified product.
   free-form CSV/DOCX/PDF text, so a candidate CV works as the batch file.
 - README studio gained a copy-to-clipboard button with fallback.
 
+### 4. Command-line interface (commit pending at time of writing)
+
+- `src/devdna/cli.py`: `devdna` console entry point (pyproject `[project.scripts]`) with
+  subcommands analyze/status/report/readme/learning/jd/cv/history/health.
+- `--wait` polls until terminal status with timeout; `--json` for raw payloads; bearer key
+  support via `DEVDNA_API_KEY`; exit codes 0/1/2; broken-pipe safe for pager piping.
+- Verified live: health, analyze --wait through real worker, pretty report with sources,
+  README file download, JD backlog ordering, history listing.
+
 ## Live verification performed
 
 | Check | Result |
