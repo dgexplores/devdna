@@ -1,5 +1,7 @@
 # DevDNA
 
+[![CI](https://github.com/dgexplores/devdna/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/devdna/actions)
+
 Evidence-based developer intelligence for developers and hiring teams.
 
 DevDNA analyzes meaningful GitHub project evidence—such as tests, CI, documentation, APIs, databases, and deployment configuration—to produce explainable role-alignment reports, improvement roadmaps, and README drafts. It does not treat commit counts, contribution streaks, stars, or followers as skill scores.
